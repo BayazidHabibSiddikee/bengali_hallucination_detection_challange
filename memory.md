@@ -128,3 +128,13 @@ Additional structural and ML best-practice improvements were made to `pipeline.i
 2. **[FIX 2] Platt Calibration (Cell 15)** — Replaced the brittle `THR_SHIFT = -0.10` with proper Platt Scaling (using `LogisticRegression`) on the Out-Of-Fold predictions before applying the dynamic threshold tuner.
 3. **[FIX 3] Restored Pseudo-Label Retraining (Cell 15.5)** — Re-inserted the `pseudo_labels.csv` exporter directly before the submission logic.
 4. **[FIX 4] TF-IDF Data Leakage Prevention (ML Best Practices)** — Updated the `tfidf_prompt_ctx_sim` function in Cell 14 to properly `fit` the `TfidfVectorizer` on the validation set (`sample`) and strictly `transform` on the `test` set, ensuring that test-set predictions are perfectly batch-independent and compliant with ML strict featurization ordering.
+
+
+## 6. Advanced Architectural Upgrades (Phase 3 - July 16, 2026)
+
+To further maximize accuracy, the following major upgrades were applied to both `pipeline.ipynb` and `adding_multifold_training.ipynb`:
+
+1. **Focal Loss Tuning**: Updated loss function to aggressively target difficult edge-cases (`gamma=2.0`, `alpha=0.75`).
+2. **4th Backbone Added**: Expanded the encoder ensemble by integrating `joeddav/xlm-roberta-large-xnli`.
+3. **LightGBM Categorical Routing**: Enabled `categorical_feature=[`category_enc`]` so LightGBM dynamically builds specialized trees for different domains (Math vs History vs Vocab).
+4. **LightGBM Optimization**: Prevented overfitting by adjusting `num_leaves=7`, `min_data_in_leaf=15`, and enabling L1/L2 regularization (`lambda_l1=0.1`, `lambda_l2=0.5`).
