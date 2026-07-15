@@ -37,6 +37,7 @@ print("Downloading Massive Hurutta Wikipedia Dump...")
 
 print("✅ Setup Complete without a JSON file!")
 
+
 ```
 
 ```python
@@ -159,12 +160,15 @@ train_fold_engine("banglabert_large", "csebuetnlp/banglabert_large", train_maste
 train_fold_engine("mdeberta", "microsoft/mdeberta-v3-base", train_master)
 train_fold_engine("bangla_bert_base", "sagorsarker/bangla-bert-base", train_master)
 train_fold_engine("xlm_roberta", "joeddav/xlm-roberta-large-xnli", train_master)
+train_fold_engine("l3cube", "l3cube-pune/bengali-bert", train_master)
 print("\n🎉 Entire cross-validation blueprint completed!")
+
 
 ```
 
 ```python
 !zip -j /content/trained_5fold_encoders.zip /content/kaggle/working/*.pt
+
 
 ```
 

@@ -12,6 +12,7 @@ except ImportError:
     subprocess.run([sys.executable,"-m","pip","install","-q","faiss-cpu"],check=False)
     print("ok | installed faiss-cpu")
 
+
 ```
 
 ```python
@@ -80,6 +81,7 @@ cfg.max_mem_llm = {0: "3GiB", 1: "13GiB", "cpu": "40GiB"}
 def tleft(): print(f"[t+{(time.time()-T0)/60:.1f}m]")
 print("device:",DEVICE,"| gpus:",torch.cuda.device_count(),"| HF token:",("set" if HF_TOKEN else "None (ok)"))
 
+
 ```
 
 ```python
@@ -108,6 +110,7 @@ def bump_digits(a):
         if ch.isdigit(): return str((int(ch)+random.randint(1,8))%10)
         return ch
     n="".join(b(c) for c in a); return None if n==a else n
+
 
 ```
 
@@ -146,6 +149,7 @@ test["leak_label"] = [_known.get(_leak_key(p, r), np.nan)
 print("leakage audit | duplicate test ids:", int(test["id"].duplicated().sum()),
       "| exact sample->test matches:", int(test["leak_label"].notna().sum()))
 
+
 ```
 
 ```python
@@ -183,6 +187,7 @@ def load_indicxnli():
 
 nli_df = pd.concat([load_nli_tsv(), load_indicxnli()], ignore_index=True)
 print("NLI total:", nli_df.shape, nli_df["label"].value_counts().to_dict() if len(nli_df) else {})
+
 
 ```
 
@@ -328,6 +333,7 @@ elif len(bhe_df):
 
 print("QA + BHE total:",qa_df.shape,"| modes:",qa_df["mode"].value_counts().to_dict() if len(qa_df) else {})
 
+
 ```
 
 ```python
@@ -382,6 +388,7 @@ wiki_passages=load_wiki(cfg.n_wiki_files); print("wiki passages:",len(wiki_passa
 synth_df=build_cloze(wiki_passages) if wiki_passages else pd.DataFrame(columns=["premise","response","label","mode","src"])
 print("cloze synthetic:",synth_df.shape)
 
+
 ```
 
 ```python
@@ -430,6 +437,7 @@ n_hold=min(3000,len(train_all)//10)
 synth_hold=train_all.iloc[:n_hold].reset_index(drop=True)
 train_main=train_all.iloc[n_hold:].reset_index(drop=True)
 print("train:",train_main.shape,"| labels:",train_main.label.value_counts().to_dict())
+
 
 ```
 
@@ -488,6 +496,7 @@ def train_backbone(name,hf,tr,val,seed=SEED,quiet=False):
     import gc; gc.collect(); torch.cuda.empty_cache()
     return model, tok
 
+
 ```
 
 ```python
@@ -501,7 +510,8 @@ cfg.backbones = (
     ("banglabert_large", "csebuetnlp/banglabert_large"),
     ("mdeberta", "microsoft/mdeberta-v3-base"),
     ("bangla_bert_base", "sagorsarker/bangla-bert-base"),
-    ("xlm_roberta", "joeddav/xlm-roberta-large-xnli")
+    ("xlm_roberta", "joeddav/xlm-roberta-large-xnli"),
+    ("l3cube", "l3cube-pune/bengali-bert")
 )
 
 def find_fold_ckpt(key, fold_idx):
@@ -554,6 +564,7 @@ sig_val["enc"]  = np.mean([sig_val[k]  for k in enc_keys], axis=0)
 sig_test["enc"] = np.mean([sig_test[k] for k in enc_keys], axis=0)
 print(f"🔥 [FINAL ENCODER META-SIGNAL] val F1(c0)@0.5 = {f1_score(sample['label'],(sig_val['enc']>=0.5).astype(int),pos_label=0):.4f}")
 tleft()
+
 
 ```
 
@@ -675,6 +686,7 @@ if keep_for_retr:
     gc.collect()
     torch.cuda.empty_cache()
 
+
 ```
 
 ```python
@@ -684,6 +696,7 @@ def lexnum(df):
     nu=np.array([len(numset(r["response_bn"])-numset(r["ctx_clean"])) for _,r in df.iterrows()])
     s=0.7*p+0.3*(nu==0); s[df["no_ctx"].values]=np.nan; return s
 lex_val=lexnum(sample); lex_test=lexnum(test)
+
 
 ```
 
@@ -730,6 +743,7 @@ def nuclear_clear():
             print("✅ GPU clear — safe to load LLM")
 
 nuclear_clear()
+
 
 
 ```
@@ -797,6 +811,7 @@ qwen_test = run_llm_subengine(test, "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B
 llm_val = np.mean([tiger_val, qwen_val], axis=0)
 llm_test = np.mean([tiger_test, qwen_test], axis=0)
 tleft()
+
 
 ```
 
@@ -906,6 +921,7 @@ Xt, _ = add_meta_features(test, Xt, retr_sim_test, fitted_tfidf)
 Xv, Xt = z_score_norm(Xv, Xt)
 yv = sample["label"].values
 print("signals:", [c for c in Xv.columns if c != "no_ctx"])
+
 
 
 
@@ -1021,6 +1037,7 @@ print("top features no_ctx:", {k: int(v) for k, v in imp_no.head(5).items()})
 
 
 
+
 ```
 
 ```python
@@ -1040,6 +1057,7 @@ if cfg.pseudo_label_n > 0:
     pseudo_df[["premise","response","label","src","mode"]].to_csv(
         "/kaggle/working/pseudo_labels.csv", index=False)
     print(f"Saved {len(pseudo_df)} pseudo labels")
+
 
 ```
 
@@ -1090,6 +1108,7 @@ sub.to_csv("submission.csv", index=False)
 print("Saved final submission.csv with Hard Rules applied!")
 
 
+
 ```
 
 ```python
@@ -1106,6 +1125,7 @@ for c in [c for c in Xt.columns if c!="no_ctx"]: diag_test[c]=Xt[c].values
 diag_test.to_csv("/kaggle/working/test_signals.csv",index=False)
 print("saved test_signals.csv")
 print("saved val_signals.csv")
+
 
 ```
 
@@ -1154,6 +1174,7 @@ try:
         fig_dist.show()
 except Exception as e:
     print(f"Visualization error: {e}")
+
 
 
 ```
