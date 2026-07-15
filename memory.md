@@ -117,3 +117,14 @@ Cell 20: CELL 18 — INTERACTIVE ERROR ANALYSIS & VISUALIZATIONS
 
 This now matches the structure and completeness of `bengali-hallu.ipynb` (21 cells total).
 
+---
+
+## 5. Pipeline Fixes Applied (July 15, 2026)
+
+Additional structural and ML best-practice improvements were made to `pipeline.ipynb` to ensure robust scaling and prevent data leakage:
+
+### Fixes Made
+1. **[FIX 1] Truncated Cell 14 (Regime Flags)** — Restored the complete regime flag parsing logic (`is_translation`, `regime_context`, etc.) using regex matching on the Bengali prompts.
+2. **[FIX 2] Platt Calibration (Cell 15)** — Replaced the brittle `THR_SHIFT = -0.10` with proper Platt Scaling (using `LogisticRegression`) on the Out-Of-Fold predictions before applying the dynamic threshold tuner.
+3. **[FIX 3] Restored Pseudo-Label Retraining (Cell 15.5)** — Re-inserted the `pseudo_labels.csv` exporter directly before the submission logic.
+4. **[FIX 4] TF-IDF Data Leakage Prevention (ML Best Practices)** — Updated the `tfidf_prompt_ctx_sim` function in Cell 14 to properly `fit` the `TfidfVectorizer` on the validation set (`sample`) and strictly `transform` on the `test` set, ensuring that test-set predictions are perfectly batch-independent and compliant with ML strict featurization ordering.

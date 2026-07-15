@@ -789,17 +789,20 @@ tleft()
 # ===== CELL 14 — RANK-NORMALIZE SIGNALS + META FEATURES (val∪test) =====
 SIGNAL_COLS = ("enc", "lex", "retr", "llm")
 
-def tfidf_prompt_ctx_sim(df):
+def tfidf_prompt_ctx_sim(df, vec=None):
     sim = np.full(len(df), np.nan)
     mask = ~df["no_ctx"].values
     if mask.sum() == 0:
-        return sim
+        return sim, vec
     sub = df.loc[mask]
-    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=20000, sublinear_tf=True)
-    P = vec.fit_transform(sub["prompt_bn"].astype(str))
+    if vec is None:
+        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=20000, sublinear_tf=True)
+        # Fit on both prompt and context for a comprehensive vocabulary
+        vec.fit(sub["prompt_bn"].astype(str).tolist() + sub["ctx_clean"].astype(str).tolist())
+    P = vec.transform(sub["prompt_bn"].astype(str))
     C = vec.transform(sub["ctx_clean"].astype(str))
     sim[mask] = np.asarray(P.multiply(C).sum(axis=1)).ravel()
-    return sim
+    return sim, vec
 
 def stackX(df, sv, lex, retr, llm, retr_sim=None):
     X = pd.DataFrame()
@@ -808,7 +811,7 @@ def stackX(df, sv, lex, retr, llm, retr_sim=None):
     X["retr"] = retr if retr is not None else np.nan
     X["llm"] = llm if llm is not None else np.nan
     X["no_ctx"] = df["no_ctx"].values
-    return X
+    return X, tfidf_vec_out
 
 
 def z_score_norm(Xv, Xt):
@@ -822,16 +825,17 @@ def z_score_norm(Xv, Xt):
             std = 1.0
         Xv[c] = (Xv[c] - mean) / std
         Xt[c] = (Xt[c] - mean) / std
-    return Xv, Xt
+    return X, tfidf_vec_outv, Xt
 
 from scipy.stats import skew, kurtosis
 
-def add_meta_features(df, X, retr_sim=None):
+def add_meta_features(df, X, retr_sim=None, tfidf_vec=None):
     X = X.copy()
     X["prompt_len"] = df["prompt_bn"].astype(str).str.len().values
     X["ctx_len"] = df["ctx_clean"].astype(str).str.len().values
     X["resp_len"] = df["response_bn"].astype(str).str.len().values
-    X["tfidf_sim"] = tfidf_prompt_ctx_sim(df)
+    sim_res, tfidf_vec_out = tfidf_prompt_ctx_sim(df, tfidf_vec)
+    X["tfidf_sim"] = sim_res
     if retr_sim is not None:
         X["retr_sim"] = retr_sim
 
@@ -879,14 +883,15 @@ def add_meta_features(df, X, retr_sim=None):
         nr = numset(r)
         return -1.0 if not nr else len(nr & (numset(p) | numset(c))) / len(nr)
     X["number_support"] = [_numsup(p, r, c) for p, r, c in zip(pr, rs, cx)]
-    return X
+    return X, tfidf_vec_out
 Xv = stackX(sample, sig_val, lex_val, retr_val, llm_val, retr_sim_val)
 Xt = stackX(test, sig_test, lex_test, retr_test, llm_test, retr_sim_test)
-Xv = add_meta_features(sample, Xv, retr_sim_val)
-Xt = add_meta_features(test, Xt, retr_sim_test)
+Xv, fitted_tfidf = add_meta_features(sample, Xv, retr_sim_val, None)
+Xt, _ = add_meta_features(test, Xt, retr_sim_test, fitted_tfidf)
 Xv, Xt = z_score_norm(Xv, Xt)
 yv = sample["label"].values
 print("signals:", [c for c in Xv.columns if c != "no_ctx"])
+
 
 ```
 
