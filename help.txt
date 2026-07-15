@@ -1,0 +1,20 @@
+claude --resume 2d6997e2-7903-481f-8a4d-b5d24f893571
+
+
+1.  bayazidhs/bengali-hallucination-data  (This is your private dataset containing the competition files  dataset samples.json  and  test set.csv )
+2.  ajmainmahtab/bangla-natural-language-inference-dataset  (Used for NLI training)
+3.  disisbig/bengali-wikipedia-articles  (Used by the TF-IDF retriever when context is missing)
+4.  mahdihasanqurishi/banglahallueval-qa  (Used for the massive QA data augmentation trick)
+5. bayazidhs/bengali-historical-books
+
+
+### How to skip the 3-hour wait on future runs:
+
+1. When your job finishes, download  banglabert_large.pt  from the Kaggle Output.
+2. Go to Kaggle, click Create -> New Dataset, and upload that  .pt  file (name it something like Trained BanglaBERT Hallucination).
+3. The next time you want to test a new idea (like tweaking the LLM settings or ensemble weights), just add that dataset to your notebook.
+4. You can then comment out the 3-hour  train_backbone()  code in Cell 10, and replace it with:
+m.load_state_dict(torch.load("/kaggle/input/your-dataset-name/banglabert_large.pt"))
+
+
+

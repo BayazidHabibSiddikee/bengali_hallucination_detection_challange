@@ -1,0 +1,240 @@
+7.7s 1 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+7.7s 2 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+7.7s 3 0.00s - to python to disable frozen modules.
+7.7s 4 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+8.2s 5 0.00s - Debugger warning: It seems that frozen modules are being used, which may
+8.2s 6 0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+8.2s 7 0.00s - to python to disable frozen modules.
+8.2s 8 0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+21.6s 9 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60.7/60.7 MB 31.2 MB/s eta 0:00:00
+21.8s 10 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60.7/60.7 MB 31.2 MB/s eta 0:00:00
+26.5s 11 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 542.0/542.0 kB 15.7 MB/s eta 0:00:00
+26.5s 12 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 116.3/116.3 kB 9.2 MB/s eta 0:00:00
+26.5s 13 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 172.0/172.0 kB 13.8 MB/s eta 0:00:00
+26.7s 14 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 542.0/542.0 kB 15.7 MB/s eta 0:00:00
+26.7s 15 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 116.3/116.3 kB 9.2 MB/s eta 0:00:00
+26.7s 16 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 172.0/172.0 kB 13.8 MB/s eta 0:00:00
+29.7s 17 ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+29.7s 18 bigframes 2.39.0 requires google-cloud-bigquery-storage<3.0.0,>=2.30.0, which is not installed.
+29.7s 19 tpot 1.1.0 requires dill>=0.3.9, but you have dill 0.3.8 which is incompatible.
+29.7s 20 gcsfs 2025.3.0 requires fsspec==2025.3.0, but you have fsspec 2024.3.1 which is incompatible.
+29.9s 21 ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+29.9s 22 bigframes 2.39.0 requires google-cloud-bigquery-storage<3.0.0,>=2.30.0, which is not installed.
+29.9s 23 tpot 1.1.0 requires dill>=0.3.9, but you have dill 0.3.8 which is incompatible.
+29.9s 24 gcsfs 2025.3.0 requires fsspec==2025.3.0, but you have fsspec 2024.3.1 which is incompatible.
+29.9s 25 
+29.9s 26 ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+29.9s 27 bigframes 2.39.0 requires google-cloud-bigquery-storage<3.0.0,>=2.30.0, which is not installed.
+29.9s 28 tpot 1.1.0 requires dill>=0.3.9, but you have dill 0.3.8 which is incompatible.
+29.9s 29 gcsfs 2025.3.0 requires fsspec==2025.3.0, but you have fsspec 2024.3.1 which is incompatible.
+41.6s 30 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 134.9/134.9 MB 14.0 MB/s eta 0:00:00
+41.8s 31 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 134.9/134.9 MB 14.0 MB/s eta 0:00:00
+46.1s 32 ok | faiss: faiss-gpu
+72.0s 33 device: cuda | gpus: 2 | HF token: set
+72.1s 34 val: (299, 8) | halluc: 0.455 | test has/no ctx: 1361 1155
+92.2s 35 NLI total: (23400, 4) {0: 14329, 1: 9071}
+124.4s 36 QA + BHE total: (17106, 5) | modes: {'faithful': 5761, 'extrinsic': 4308, 'unanswerable': 4239, 'intrinsic': 1453, 'wrong_attr': 1345}
+187.4s 37 wiki passages: 7091
+214.7s 38 cloze synthetic: (23698, 5)
+215.2s 39 train: (14478, 5) | labels: {1: 7250, 0: 7228}
+215.4s 40 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+215.4s 41 
+215.4s 42 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+215.4s 43 [banglabert_large] loading checkpoint /kaggle/input/datasets/bayazidhs/trained-banglabert/banglabert_large.pt — skipping training
+230.6s 44 ElectraForSequenceClassification LOAD REPORT from: csebuetnlp/banglabert_large
+230.6s 45 Key                                               | Status     |
+230.6s 46 --------------------------------------------------+------------+-
+230.6s 47 discriminator_predictions.dense_prediction.weight | UNEXPECTED |
+230.6s 48 discriminator_predictions.dense.weight            | UNEXPECTED |
+230.6s 49 discriminator_predictions.dense_prediction.bias   | UNEXPECTED |
+230.6s 50 electra.embeddings.position_ids                   | UNEXPECTED |
+230.6s 51 discriminator_predictions.dense.bias              | UNEXPECTED |
+230.6s 52 classifier.dense.weight                           | MISSING    |
+230.6s 53 classifier.out_proj.weight                        | MISSING    |
+230.6s 54 classifier.dense.bias                             | MISSING    |
+230.6s 55 classifier.out_proj.bias                          | MISSING    |
+230.6s 56 
+230.6s 57 Notes:
+230.6s 58 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+230.6s 59 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+230.6s 60 
+230.6s 61 ElectraForSequenceClassification LOAD REPORT from: csebuetnlp/banglabert_large
+230.6s 62 Key                                               | Status     |
+230.6s 63 --------------------------------------------------+------------+-
+230.6s 64 discriminator_predictions.dense_prediction.weight | UNEXPECTED |
+230.6s 65 discriminator_predictions.dense.weight            | UNEXPECTED |
+230.6s 66 discriminator_predictions.dense_prediction.bias   | UNEXPECTED |
+230.6s 67 electra.embeddings.position_ids                   | UNEXPECTED |
+230.6s 68 discriminator_predictions.dense.bias              | UNEXPECTED |
+230.6s 69 classifier.dense.weight                           | MISSING    |
+230.6s 70 classifier.out_proj.weight                        | MISSING    |
+230.6s 71 classifier.dense.bias                             | MISSING    |
+230.6s 72 classifier.out_proj.bias                          | MISSING    |
+230.6s 73 
+230.6s 74 Notes:
+230.6s 75 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+230.6s 76 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+269.1s 77 [banglabert_large] val F1(c0)@0.5 = 0.6180
+376.5s 78 [mdeberta] no checkpoint found — training from scratch
+386.7s 79 DebertaV2ForSequenceClassification LOAD REPORT from: microsoft/mdeberta-v3-base
+386.7s 80 Key                                        | Status     |
+386.7s 81 -------------------------------------------+------------+-
+386.7s 82 mask_predictions.classifier.weight         | UNEXPECTED |
+386.7s 83 lm_predictions.lm_head.LayerNorm.bias      | UNEXPECTED |
+386.7s 84 lm_predictions.lm_head.LayerNorm.weight    | UNEXPECTED |
+386.7s 85 lm_predictions.lm_head.dense.weight        | UNEXPECTED |
+386.7s 86 deberta.embeddings.word_embeddings._weight | UNEXPECTED |
+386.7s 87 lm_predictions.lm_head.bias                | UNEXPECTED |
+386.7s 88 lm_predictions.lm_head.dense.bias          | UNEXPECTED |
+386.7s 89 mask_predictions.classifier.bias           | UNEXPECTED |
+386.7s 90 mask_predictions.LayerNorm.bias            | UNEXPECTED |
+386.7s 91 mask_predictions.dense.weight              | UNEXPECTED |
+386.7s 92 mask_predictions.dense.bias                | UNEXPECTED |
+386.7s 93 mask_predictions.LayerNorm.weight          | UNEXPECTED |
+386.7s 94 pooler.dense.bias                          | MISSING    |
+386.7s 95 classifier.bias                            | MISSING    |
+386.7s 96 pooler.dense.weight                        | MISSING    |
+386.7s 97 classifier.weight                          | MISSING    |
+386.7s 98 
+386.7s 99 Notes:
+386.7s 100 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+386.7s 101 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+386.7s 102 
+386.7s 103 DebertaV2ForSequenceClassification LOAD REPORT from: microsoft/mdeberta-v3-base
+386.7s 104 Key                                        | Status     |
+386.7s 105 -------------------------------------------+------------+-
+386.7s 106 mask_predictions.classifier.weight         | UNEXPECTED |
+386.7s 107 lm_predictions.lm_head.LayerNorm.bias      | UNEXPECTED |
+386.7s 108 lm_predictions.lm_head.LayerNorm.weight    | UNEXPECTED |
+386.7s 109 lm_predictions.lm_head.dense.weight        | UNEXPECTED |
+386.7s 110 deberta.embeddings.word_embeddings._weight | UNEXPECTED |
+386.7s 111 lm_predictions.lm_head.bias                | UNEXPECTED |
+386.7s 112 lm_predictions.lm_head.dense.bias          | UNEXPECTED |
+386.7s 113 mask_predictions.classifier.bias           | UNEXPECTED |
+386.7s 114 mask_predictions.LayerNorm.bias            | UNEXPECTED |
+386.7s 115 mask_predictions.dense.weight              | UNEXPECTED |
+386.7s 116 mask_predictions.dense.bias                | UNEXPECTED |
+386.7s 117 mask_predictions.LayerNorm.weight          | UNEXPECTED |
+386.7s 118 pooler.dense.bias                          | MISSING    |
+386.7s 119 classifier.bias                            | MISSING    |
+386.7s 120 pooler.dense.weight                        | MISSING    |
+386.7s 121 classifier.weight                          | MISSING    |
+386.7s 122 
+386.7s 123 Notes:
+386.7s 124 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+386.7s 125 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+899.8s 126 mdeberta s42 ep1: valF1(c0)=0.4519
+1417.4s 127 mdeberta s42 ep2: valF1(c0)=0.7066
+1935.1s 128 mdeberta s42 ep3: valF1(c0)=0.7209
+2453.3s 129 mdeberta s42 ep4: valF1(c0)=0.7059
+2476.7s 130 [mdeberta] val F1(c0)@0.5 = 0.7059
+2478.7s 131 [enc = avg ['banglabert_large', 'mdeberta']] val F1(c0)@0.5 = 0.6667
+2478.7s 132 [t+40.1m]
+2479.7s 133 retrieval corpus: 29988 passages (size=500, overlap=150)
+2490.8s 134 BertModel LOAD REPORT from: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+2490.8s 135 Key                     | Status     |  |
+2490.8s 136 ------------------------+------------+--+-
+2490.8s 137 embeddings.position_ids | UNEXPECTED |  |
+2490.8s 138 
+2490.8s 139 Notes:
+2490.8s 140 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2490.8s 141 
+2490.8s 142 BertModel LOAD REPORT from: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+2490.8s 143 Key                     | Status     |  |
+2490.8s 144 ------------------------+------------+--+-
+2490.8s 145 embeddings.position_ids | UNEXPECTED |  |
+2490.8s 146 
+2490.8s 147 Notes:
+2490.8s 148 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+2569.6s 149 FAISS: GPU flat inner-product index
+2653.7s 150 GPU0: 15.4GB free / 15.6GB | alloc=0.0GB
+2653.7s 151 GPU1: 15.5GB free / 15.6GB | alloc=0.0GB
+2653.7s 152 LLM budget: {0: '11GiB', 1: '13GiB', 'cpu': '40GiB'}
+2653.7s 153 ✅ GPU clear — safe to load LLM
+2654.9s 154 free per GPU: {0: '15.4GB', 1: '15.5GB'} -> preferring GPU 1
+2654.9s 155 Found pre-quantized checkpoint at /kaggle/input/datasets/bayazidhs/tigerllm-9b-4bit/tigerllm-9b-4bit, loading directly (no re-quantization)...
+2710.8s 156 ✅ Loaded: TigerLLM-9B-it (pre-quantized, GPU1)
+2712.2s 157 TigerLLM judge 0/299 | Cat: comprehension
+2989.7s 158 TigerLLM judge 250/299 | Cat: general_knowledge
+3048.3s 159 free per GPU: {0: '15.4GB', 1: '7.9GB'} -> preferring GPU 0
+3048.3s 160 Found pre-quantized checkpoint at /kaggle/input/datasets/bayazidhs/tigerllm-9b-4bit/tigerllm-9b-4bit, loading directly (no re-quantization)...
+3056.7s 161 ✅ Loaded: TigerLLM-9B-it (pre-quantized, GPU0)
+3057.5s 162 TigerLLM judge 0/2516 | Cat: vocabulary
+3264.2s 163 TigerLLM judge 250/2516 | Cat: math
+3514.5s 164 TigerLLM judge 500/2516 | Cat: general_knowledge
+3819.1s 165 TigerLLM judge 750/2516 | Cat: comprehension
+4122.0s 166 TigerLLM judge 1000/2516 | Cat: comprehension
+4417.3s 167 TigerLLM judge 1250/2516 | Cat: general_knowledge
+4717.5s 168 TigerLLM judge 1500/2516 | Cat: math
+5027.7s 169 TigerLLM judge 1750/2516 | Cat: general_knowledge
+5341.7s 170 TigerLLM judge 2000/2516 | Cat: code_mixed
+5632.0s 171 TigerLLM judge 2250/2516 | Cat: comprehension
+5940.6s 172 TigerLLM judge 2500/2516 | Cat: code_mixed
+5960.2s 173 [t+98.1m]
+5961.3s 174 signals: ['enc', 'lex', 'retr', 'llm', 'prompt_len', 'ctx_len', 'resp_len', 'tfidf_sim', 'retr_sim']
+5965.3s 175 LGBM has_ctx thr 0.95 pointF1 0.9895
+5965.3s 176 LGBM no_ctx  thr 0.219 pointF1 0.9944
+5965.3s 177 OVERALL valF1(c0): 0.9963 | all-0 floor: 0.6253
+5965.3s 178 top features has_ctx: {'enc': 715, 'resp_len': 476, 'tfidf_sim': 344, 'ctx_len': 299, 'prompt_len': 264}
+5965.3s 179 top features no_ctx: {'enc': 625, 'retr_sim': 595, 'prompt_len': 456, 'resp_len': 424, 'lex': 0}
+5965.5s 180 Pseudo-labeling 500 test rows (conf >= 0.99)
+5965.5s 181 Retraining banglabert_large on 14978 rows (+500 pseudo)
+5967.1s 182 ElectraForSequenceClassification LOAD REPORT from: csebuetnlp/banglabert_large
+5967.1s 183 Key                                               | Status     |
+5967.1s 184 --------------------------------------------------+------------+-
+5967.1s 185 discriminator_predictions.dense_prediction.weight | UNEXPECTED |
+5967.1s 186 discriminator_predictions.dense.weight            | UNEXPECTED |
+5967.1s 187 discriminator_predictions.dense_prediction.bias   | UNEXPECTED |
+5967.1s 188 electra.embeddings.position_ids                   | UNEXPECTED |
+5967.1s 189 discriminator_predictions.dense.bias              | UNEXPECTED |
+5967.1s 190 classifier.dense.weight                           | MISSING    |
+5967.1s 191 classifier.out_proj.weight                        | MISSING    |
+5967.1s 192 classifier.dense.bias                             | MISSING    |
+5967.1s 193 classifier.out_proj.bias                          | MISSING    |
+5967.1s 194 
+5967.1s 195 Notes:
+5967.1s 196 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+5967.1s 197 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+5967.1s 198 
+5967.1s 199 ElectraForSequenceClassification LOAD REPORT from: csebuetnlp/banglabert_large
+5967.1s 200 Key                                               | Status     |
+5967.1s 201 --------------------------------------------------+------------+-
+5967.1s 202 discriminator_predictions.dense_prediction.weight | UNEXPECTED |
+5967.1s 203 discriminator_predictions.dense.weight            | UNEXPECTED |
+5967.1s 204 discriminator_predictions.dense_prediction.bias   | UNEXPECTED |
+5967.1s 205 electra.embeddings.position_ids                   | UNEXPECTED |
+5967.1s 206 discriminator_predictions.dense.bias              | UNEXPECTED |
+5967.1s 207 classifier.dense.weight                           | MISSING    |
+5967.1s 208 classifier.out_proj.weight                        | MISSING    |
+5967.1s 209 classifier.dense.bias                             | MISSING    |
+5967.1s 210 classifier.out_proj.bias                          | MISSING    |
+5967.1s 211 
+5967.1s 212 Notes:
+5967.1s 213 - UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+5967.1s 214 - MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+6762.8s 215 banglabert_large s141 ep1: valF1(c0)=0.6850
+7560.2s 216 banglabert_large s141 ep2: valF1(c0)=0.6987
+8388.1s 217 banglabert_large s141 ep3: valF1(c0)=0.7029
+9214.8s 218 banglabert_large s141 ep4: valF1(c0)=0.7105
+9253.6s 219 [enc round-2] val F1(c0)@0.5 = 0.7016
+9256.8s 220 Round-2 valF1(c0): 0.9926
+9256.9s 221 submission.csv (2516, 2) | halluc rate: 0.401
+9256.9s 222 [t+153.1m]
+9256.9s 223 Wrong predictions: 2/299
+9256.9s 224 False positives (pred=1, true=0): 1
+9256.9s 225 False negatives (pred=0, true=1): 1
+9256.9s 226 has_ctx: n=130 valF1(c0)=0.9895 pred-halluc=0.37 true-halluc=0.36
+9256.9s 227 no_ctx: n=169 valF1(c0)=0.9944 pred-halluc=0.52 true-halluc=0.53
+9256.9s 228 saved val_signals.csv
+9257.0s 229 Generating Pseudo-Labels from highly confident test predictions...
+9257.0s 230 ✅ Saved 1290 highly confident test predictions to pseudo_labels.csv!
+9257.0s 231 💡 TIP: Download this file, upload it as a Kaggle dataset, and in your next run, append it to train_all in Cell 8 to boost accuracy!
+9257.6s 232 Generating Interactive Visualizations...
+9266.8s 233 /usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+9266.8s 234 cells[i][c] = re.sub('\\\\\|', '|', cell)
+9267.0s 235 /usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+9267.0s 236 text = re.sub(r'_', '\_', text) # Escape underscores in display text
+9267.6s 237 [NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+9268.1s 238 [NbConvertApp] Writing 669478 bytes to __notebook__.ipynb
+9270.5s 239 [NbConvertApp] Converting notebook __notebook__.ipynb to html
+9271.7s 240 [NbConvertApp] Writing 1062694 bytes to __results__.html
