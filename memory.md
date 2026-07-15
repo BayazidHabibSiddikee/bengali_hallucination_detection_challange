@@ -142,3 +142,14 @@ To further maximize accuracy, the following major upgrades were applied to both 
 
 ### Minor Update: 5th Backbone Added (July 16, 2026)
 User requested to add `l3cube-pune/bengali-bert` to the ensemble. It is now a 5-model stack generating 25 checkpoints.
+
+
+## 7. Phase 4: LLRD Injection & Meta-Pruning (July 16, 2026)
+
+1. **LLRD Injection**: Added `get_llrd_params` to the Colab training script to smoothly decay the learning rate on deeper layers, preventing catastrophic forgetting during fine-tuning.
+2. **Kaggle Pruning**: Removed the weaker `bangla_bert_base` and `l3cube` models from BOTH the Colab training script and Kaggle pipeline, focusing all compute resources on the 3 strongest models: `banglabert_large`, `mdeberta`, and `xlm_roberta`.
+3. **Fold Averaging Verification**: Confirmed that `pipeline.ipynb` natively supports loading and averaging 5 folds perfectly via `find_fold_ckpt(key, fold_idx)`.
+
+
+### Minor Update: Dedicated Colab Pipeline Created (July 16, 2026)
+User requested a dedicated version of `pipeline.ipynb` that ignores Kaggle compute limits and runs all 5 backbones for maximum accuracy. Created `pipeline_colab.ipynb` for this purpose.
