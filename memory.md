@@ -138,3 +138,7 @@ To further maximize accuracy, the following major upgrades were applied to both 
 2. **4th Backbone Added**: Expanded the encoder ensemble by integrating `joeddav/xlm-roberta-large-xnli`.
 3. **LightGBM Categorical Routing**: Enabled `categorical_feature=[`category_enc`]` so LightGBM dynamically builds specialized trees for different domains (Math vs History vs Vocab).
 4. **LightGBM Optimization**: Prevented overfitting by adjusting `num_leaves=7`, `min_data_in_leaf=15`, and enabling L1/L2 regularization (`lambda_l1=0.1`, `lambda_l2=0.5`).
+
+
+### Minor Update: 5th Backbone Added (July 16, 2026)
+User requested to add `l3cube-pune/bengali-bert` to the ensemble. It is now a 5-model stack generating 25 checkpoints.

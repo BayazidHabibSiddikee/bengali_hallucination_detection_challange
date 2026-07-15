@@ -38,6 +38,7 @@ print("Downloading Massive Hurutta Wikipedia Dump...")
 print("✅ Setup Complete without a JSON file!")
 
 
+
 ```
 
 ```python
@@ -130,6 +131,14 @@ class PairDS(Dataset):
         e = self.t(self.p[i], self.h[i], truncation=True, max_length=self.m, padding="max_length", return_tensors="pt")
         return {"input_ids": e["input_ids"].squeeze(0), "attention_mask": e["attention_mask"].squeeze(0), "labels": torch.tensor(self.y[i], dtype=torch.long)}
 
+def get_llrd_params(model, lr, decay=0.9):
+    layers = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
+    param_groups = []
+    for i, (name, param) in enumerate(reversed(layers)):
+        layer_lr = lr * (decay ** (i // 12))
+        param_groups.append({"params": [param], "lr": layer_lr})
+    return param_groups
+
 def train_fold_engine(name, hf_path, train_df, n_folds=5):
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=SEED)
     for fold, (trn_idx, val_idx) in enumerate(skf.split(train_df, train_df['label'])):
@@ -138,7 +147,7 @@ def train_fold_engine(name, hf_path, train_df, n_folds=5):
         model = AutoModelForSequenceClassification.from_pretrained(hf_path, num_labels=2, ignore_mismatched_sizes=True).float().to(DEVICE)
         
         trn_ld = DataLoader(PairDS(train_df.iloc[trn_idx], tok, 256), batch_size=8, shuffle=True)
-        opt = torch.optim.AdamW(model.parameters(), lr=8e-6)
+        opt = torch.optim.AdamW(get_llrd_params(model, 8e-6), weight_decay=0.01)
         scaler = torch.amp.GradScaler("cuda")
         crit = Focal()
         
@@ -158,16 +167,16 @@ def train_fold_engine(name, hf_path, train_df, n_folds=5):
 # 6. Run the 15-Model Stack Strategy
 train_fold_engine("banglabert_large", "csebuetnlp/banglabert_large", train_master)
 train_fold_engine("mdeberta", "microsoft/mdeberta-v3-base", train_master)
-train_fold_engine("bangla_bert_base", "sagorsarker/bangla-bert-base", train_master)
 train_fold_engine("xlm_roberta", "joeddav/xlm-roberta-large-xnli", train_master)
-train_fold_engine("l3cube", "l3cube-pune/bengali-bert", train_master)
 print("\n🎉 Entire cross-validation blueprint completed!")
+
 
 
 ```
 
 ```python
 !zip -j /content/trained_5fold_encoders.zip /content/kaggle/working/*.pt
+
 
 
 ```
