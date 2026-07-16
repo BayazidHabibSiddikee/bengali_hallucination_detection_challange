@@ -39,6 +39,7 @@ print("✅ Setup Complete without a JSON file!")
 
 
 
+
 ```
 
 ```python
@@ -68,6 +69,7 @@ NLI_TSV     = find_file("/content/**/NLI Dataset - Combined.tsv")
 WIKI_DIR    = os.path.dirname(find_file("/content/**/*.txt")) if find_file("/content/**/*.txt") else None
 BHE_1000    = find_file("/content/**/banglahallueval_qa_1000.csv")
 BHE_FULL    = find_file("/content/**/banglahallueval_qa_dataset.csv")
+PSEUDO_PATH = find_file("/content/**/pseudo_labels.csv")
 
 print(f"✓ Found Sample Path: {SAMPLE_PATH}")
 print(f"✓ Found Wiki Dir: {WIKI_DIR}")
@@ -107,7 +109,18 @@ if BHE_1000 and os.path.exists(BHE_1000):
         bhe_rows.append((q, ans, 1, "bhe"))
         if all_ans: bhe_rows.append((q, random.choice(all_ans), 0, "bhe"))
 
-train_master = pd.concat([sample[["premise", "response", "label", "src"]], pd.DataFrame(bhe_rows, columns=["premise", "response", "label", "src"])]).dropna()
+pseudo_rows = []
+if PSEUDO_PATH and os.path.exists(PSEUDO_PATH):
+    df_pseudo = pd.read_csv(PSEUDO_PATH)
+    if {"premise", "response", "label"}.issubset(df_pseudo.columns):
+        df_pseudo["src"] = "pseudo"
+        pseudo_rows.append(df_pseudo[["premise", "response", "label", "src"]])
+        print(f"✓ Injected {len(df_pseudo)} Pseudo-Labels into training!")
+
+train_master = pd.concat([
+    sample[["premise", "response", "label", "src"]], 
+    pd.DataFrame(bhe_rows, columns=["premise", "response", "label", "src"])
+] + pseudo_rows).dropna()
 train_master = train_master.drop_duplicates(subset=["premise", "response"]).sample(frac=1, random_state=SEED).reset_index(drop=True)
 
 # Cap size slightly to protect Colab memory limits
@@ -172,12 +185,11 @@ print("\n🎉 Entire cross-validation blueprint completed!")
 
 
 
+
 ```
 
 ```python
 !zip -j /content/trained_5fold_encoders.zip /content/kaggle/working/*.pt
-
-
 
 ```
 
