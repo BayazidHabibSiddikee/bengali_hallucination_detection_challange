@@ -1,4 +1,4 @@
-\`\`\`python
+```python
 # ===== CELL 1 — INSTALLS (datasets PINNED: tydiqa/squad_bn are script datasets, broken on 3.x) =====
 import subprocess, sys, shutil
 for p in ["transformers>=4.44","sentencepiece","accelerate>=0.30","bitsandbytes","datasets==2.19.0","tqdm","lightgbm","sentence-transformers"]:
@@ -15,9 +15,10 @@ except ImportError:
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 2 — CONFIG · SEEDS · SECRETS =====
 import os, re, gc, glob, json, random, unicodedata, warnings, time
 import numpy as np, pandas as pd, torch, torch.nn as nn, torch.nn.functional as F
@@ -86,9 +87,10 @@ print("device:",DEVICE,"| gpus:",torch.cuda.device_count(),"| HF token:",("set" 
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 3 — BENGALI UTILS =====
 BN_DIGITS="০১২৩৪৫৬৭৮৯"; BN2ASCII={ord(b):str(i) for i,b in enumerate(BN_DIGITS)}
 NULLS={"[null]","null","none","nan","n/a",""}; _P=set("।,.?!;:\"'()[]{}<>/\\|-–—’‘“”…%°")
@@ -118,9 +120,10 @@ def bump_digits(a):
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 4 — COMPETITION DATA =====
 SAMPLE_PATH = "/kaggle/input/datasets/bayazidhs/bengali-hallucination-data/dataset samples.json"
 TEST_PATH   = "/kaggle/input/datasets/bayazidhs/bengali-hallucination-data/test set.csv"
@@ -158,9 +161,10 @@ print("leakage audit | duplicate test ids:", int(test["id"].duplicated().sum()),
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 5 — NLI SOURCES (TSV + IndicXNLI-bn; token optional, local-first) =====
 def load_nli_tsv():
     if not os.path.exists(cfg.nli_tsv):
@@ -199,9 +203,10 @@ print("NLI total:", nli_df.shape, nli_df["label"].value_counts().to_dict() if le
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 6 — REAL BENGALI QA & BANGLA HALLU EVAL =====
 def qa_rows(items):
     by_ctx={}
@@ -346,9 +351,10 @@ print("QA + BHE total:",qa_df.shape,"| modes:",qa_df["mode"].value_counts().to_d
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 7 — CLOZE SYNTHETIC FROM WIKI =====
 STOP=set("এবং ও কিন্তু বা যে যা এই সেই তার তাদের করা হয় হয়ে হন ছিল ছিলেন একটি একটা এক থেকে সালে জন্য এর কে না নয় করে করেন দিয়ে পরে আগে মধ্যে সাথে হিসেবে".split())
 def spans_in(s):
@@ -403,9 +409,10 @@ print("cloze synthetic:",synth_df.shape)
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 8 — ASSEMBLE + MODE-STRATIFIED 50/50 BALANCE =====
 if len(nli_df): nli_df=nli_df.assign(mode=nli_df["src"])
 
@@ -455,9 +462,10 @@ print("train:",train_main.shape,"| labels:",train_main.label.value_counts().to_d
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 9 — DATASET · FOCAL · TRAIN/PREDICT (fp32 params + fp16 autocast) =====
 class PairDS(Dataset):
     def __init__(self,df,tok,mx,lab=True):
@@ -515,9 +523,10 @@ def train_backbone(name,hf,tr,val,seed=SEED,quiet=False):
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 10 — ENCODER ENSEMBLE (5-FOLD MULTI-MODEL OUT-OF-FOLD) =====
 sig_val = {}; sig_test = {}; keep_for_retr = None
 import os, gc, glob, torch
@@ -594,9 +603,10 @@ tleft()
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 11 — RETRIEVAL-AUGMENTED no_context (`retr`) — FAISS + Dense Embeddings =====
 retr_sim_val = np.full(len(sample), np.nan)
 retr_sim_test = np.full(len(test), np.nan)
@@ -717,9 +727,10 @@ if keep_for_retr:
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 12 — LEX/NUM (has_context) =====
 def lexnum(df):
     p=np.array([contain(r["response_bn"],r["ctx_clean"]) for _,r in df.iterrows()])
@@ -730,9 +741,10 @@ lex_val=lexnum(sample); lex_test=lexnum(test)
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 12.5 — NUCLEAR CLEAR & MEMORY BUDGET =====
 import gc, torch, ctypes
 
@@ -780,9 +792,10 @@ nuclear_clear()
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 13 — DUAL-LLM JUDGE (SEQUENTIAL EXECUTION LIFECYCLE) =====
 cfg.llm_input_len = 512
 import re, os, gc, torch, ctypes
@@ -849,9 +862,10 @@ tleft()
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 14 — RANK-NORMALIZE SIGNALS + META FEATURES (val∪test) =====
 SIGNAL_COLS = ("enc", "lex", "retr", "llm")
 
@@ -963,9 +977,10 @@ print("signals:", [c for c in Xv.columns if c != "no_ctx"])
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 15 — LIGHTGBM META-MODEL STACKING (replaces Powell blender) =====
 import lightgbm as lgb
 from sklearn.calibration import CalibratedClassifierCV
@@ -1078,18 +1093,17 @@ print("top features no_ctx:", {k: int(v) for k, v in imp_no.head(5).items()})
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 15.5 — PSEUDO LABEL RETRAIN =====
 if cfg.pseudo_label_n > 0:
     conf_mask = (pt < (tt - 0.25)) | (pt > (tt + 0.25))
     pseudo_df = test[conf_mask].copy()
     pseudo_df["label"] = (pt[conf_mask] >= tt[conf_mask]).astype(int)
-    pseudo_df = pseudo_df.nlargest(
-        min(cfg.pseudo_label_n, len(pseudo_df)),
-        key=lambda x: abs(pt[conf_mask] - tt[conf_mask])
-    )
+    pseudo_df["_conf_score"] = abs(pt[conf_mask] - tt[conf_mask])
+    pseudo_df = pseudo_df.nlargest(min(cfg.pseudo_label_n, len(pseudo_df)), "_conf_score")
     pseudo_df["premise"]  = pseudo_df["premise"]
     pseudo_df["response"] = pseudo_df["response_bn"].astype(str)
     pseudo_df["src"]      = "test_set"
@@ -1101,9 +1115,10 @@ if cfg.pseudo_label_n > 0:
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 16 — SUBMISSION =====
 # pt/tt from Cell 15 (LightGBM meta-model); refined in Cell 15.5 if pseudo-retrain ran
 out=pd.DataFrame({"id":test["id"].values,"label":(pt>=tt).astype(int)})
@@ -1153,9 +1168,10 @@ print("Saved final submission.csv with Hard Rules applied!")
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 17 — DIAGNOSTICS =====
 for reg,mask in (("has_ctx",~sample["no_ctx"].values),("no_ctx",sample["no_ctx"].values)):
     pr=(pv[mask]>=tv[mask]).astype(int)
@@ -1173,9 +1189,10 @@ print("saved val_signals.csv")
 
 
 
-\`\`\`
 
-\`\`\`python
+```
+
+```python
 # ===== CELL 18 — INTERACTIVE ERROR ANALYSIS & VISUALIZATIONS =====
 import plotly.express as px
 import plotly.graph_objects as go
@@ -1225,5 +1242,6 @@ except Exception as e:
 
 
 
-\`\`\`
+
+```
 
