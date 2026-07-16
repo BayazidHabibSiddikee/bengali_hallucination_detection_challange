@@ -1,3 +1,14 @@
+```python
+!mkdir -p /content/kaggle/input/datasets/bayazidhs/bengali-hallucination-data
+!mkdir -p /content/kaggle/input/datasets/ajmainmahtab/bangla-natural-language-inference-dataset
+!mkdir -p /content/kaggle/input/datasets/disisbig/bengali-wikipedia-articles
+!mkdir -p /content/kaggle/input/datasets/mahdihasanqurishi/banglahallueval-qa
+!mkdir -p /content/kaggle/input/bangla-wikipedia-dataset
+!mkdir -p /content/kaggle/input/datasets/bayazidhs/bengali-trained-mdeberta
+!mkdir -p /kaggle/working/
+
+```
+
 ### As I have less runtime so Im using google collab
 
 ```python
