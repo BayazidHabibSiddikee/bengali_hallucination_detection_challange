@@ -1,14 +1,3 @@
-```python
-!mkdir -p /content/kaggle/input/datasets/bayazidhs/bengali-hallucination-data
-!mkdir -p /content/kaggle/input/datasets/ajmainmahtab/bangla-natural-language-inference-dataset
-!mkdir -p /content/kaggle/input/datasets/disisbig/bengali-wikipedia-articles
-!mkdir -p /content/kaggle/input/datasets/mahdihasanqurishi/banglahallueval-qa
-!mkdir -p /content/kaggle/input/bangla-wikipedia-dataset
-!mkdir -p /content/kaggle/input/datasets/bayazidhs/bengali-trained-mdeberta
-!mkdir -p /kaggle/working/
-
-```
-
 ### As I have less runtime so Im using google collab
 
 ```python
@@ -29,6 +18,8 @@ os.environ['KAGGLE_KEY'] = "KGAT_063be4398e520585086af3fbb9e5141f" # <--- REPLAC
 !mkdir -p /content/kaggle/input/datasets/disisbig/bengali-wikipedia-articles
 !mkdir -p /content/kaggle/input/datasets/mahdihasanqurishi/banglahallueval-qa
 !mkdir -p /content/kaggle/input/bangla-wikipedia-dataset
+!mkdir -p /content/kaggle/input/datasets/bayazidhs/bengali-trained-mdeberta
+!mkdir -p /kaggle/working/
 
 # 4. Download and Unzip the 5 Required Datasets
 print("Downloading Host Data...")
@@ -43,10 +34,14 @@ print("Downloading Bengali Wikipedia Articles...")
 print("Downloading BanglaHalluEval QA...")
 !kaggle datasets download mahdihasanqurishi/banglahallueval-qa -p /content/kaggle/input/datasets/mahdihasanqurishi/banglahallueval-qa --unzip
 
+print("Downloading Pseudo Labels...")
+!kaggle datasets download bayazidhs/bengali-trained-mdeberta -p /content/kaggle/input/datasets/bayazidhs/bengali-trained-mdeberta --unzip
+
 print("Downloading Massive Hurutta Wikipedia Dump...")
 !kaggle datasets download hurutta/bangla-wikipedia-dataset -p /content/kaggle/input/bangla-wikipedia-dataset --unzip
 
 print("✅ Setup Complete without a JSON file!")
+
 
 
 
