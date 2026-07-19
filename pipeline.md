@@ -12,9 +12,6 @@ except ImportError:
     subprocess.run([sys.executable,"-m","pip","install","-q","faiss-cpu"],check=False)
     print("ok | installed faiss-cpu")
 
-
-
-
 ```
 
 ```python
@@ -526,15 +523,15 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 # The 3 backbones driving the semantic net
 cfg.backbones = (
     ("banglabert_large", "csebuetnlp/banglabert_large"),
-    ("mdeberta", "microsoft/mdeberta-v3-base"),
-    ("xlm_roberta", "xlm-roberta-large")
+    ("mdeberta",         "microsoft/mdeberta-v3-base"),
+    ("xlm_roberta",      "xlm-roberta-large"),
 )
 
 def find_fold_ckpt(key, fold_idx):
     patterns = [
         f"/kaggle/input/**/{key}_fold{fold_idx}.pt",
         f"/kaggle/input/**/{key}_fold{fold_idx}/{key}_fold{fold_idx}.pt",
-        f"/kaggle/input/**/{key}.pt" # Absolute baseline fallback
+        f"/kaggle/input/**/{key}.pt",  # absolute baseline fallback
     ]
     for pat in patterns:
         hits = glob.glob(pat, recursive=True)
@@ -542,64 +539,106 @@ def find_fold_ckpt(key, fold_idx):
     return None
 
 first_key = cfg.backbones[0][0]
-enc_keys = []
+enc_keys  = []
 
 for bb_key, bb_path in cfg.backbones:
-    fold_preds_val = []
+    fold_preds_val  = []
     fold_preds_test = []
-    
+
     for fold in range(5):
         ckpt = find_fold_ckpt(bb_key, fold)
         if not ckpt:
+            print(f"  [{bb_key}] fold {fold} checkpoint not found — skipping")
             continue
-            
-        print(f"[{bb_key}] Loading fold framework {fold} from {ckpt}")
+
+        print(f"  [{bb_key}] loading fold {fold} from {ckpt}")
         tk = AutoTokenizer.from_pretrained(bb_path)
-        m = AutoModelForSequenceClassification.from_pretrained(
-            bb_path, num_labels=2, ignore_mismatched_sizes=True).float().to(DEVICE)
+        m  = AutoModelForSequenceClassification.from_pretrained(
+                 bb_path, num_labels=2,
+                 ignore_mismatched_sizes=True).float().to(DEVICE)
         m.load_state_dict(torch.load(ckpt, map_location=DEVICE))
         m.eval()
-        
-        fold_preds_val.append(predict_proba(m, tk, sample, cfg.max_len, cfg.batch_size*2))
-        fold_preds_test.append(predict_proba(m, tk, test, cfg.max_len, cfg.batch_size*2))
-        
-        # Save a single frozen slice of fold 0 for FAISS matching matrix later
+
+        fold_preds_val.append(
+            predict_proba(m, tk, sample, cfg.max_len, cfg.batch_size * 2))
+        fold_preds_test.append(
+            predict_proba(m, tk, test,   cfg.max_len, cfg.batch_size * 2))
+
+        # keep fold-0 of first backbone frozen for FAISS retrieval
         if cfg.use_retrieval and bb_key == first_key and fold == 0:
-            keep_for_retr = (m.half().eval(), tk)
+            keep_for_retr = (m.half().to(DEVICE).eval(), tk)
         else:
-            m = m.cpu(); del m; gc.collect(); torch.cuda.empty_cache()
-            
+            m = m.cpu()
+            del m
+            gc.collect()
+            torch.cuda.empty_cache()
+
     if fold_preds_val:
-        sig_val[bb_key] = np.mean(fold_preds_val, axis=0)
+        sig_val[bb_key]  = np.mean(fold_preds_val,  axis=0)
         sig_test[bb_key] = np.mean(fold_preds_test, axis=0)
         enc_keys.append(bb_key)
-        print(f"✨ [{bb_key} Combined 5-Fold] OOF F1 evaluation computed.")
+        print(f"  [{bb_key}] 5-fold mean computed ✅")
+    else:
+        print(f"  [{bb_key}] ⚠ no checkpoints found — backbone skipped entirely")
 
-# --- Combine features down to a single meta signal entry ---
-sig_val["enc"]  = np.mean([sig_val[k]  for k in enc_keys], axis=0)
-sig_test["enc"] = np.mean([sig_test[k] for k in enc_keys], axis=0)
-print(f"🔥 [FINAL ENCODER META-SIGNAL] val F1(c0)@0.5 = {f1_score(sample['label'],(sig_val['enc']>=0.5).astype(int),pos_label=0):.4f}")
+# Combine all backbone signals into single enc meta-signal
+if enc_keys:
+    sig_val["enc"]  = np.mean([sig_val[k]  for k in enc_keys], axis=0)
+    sig_test["enc"] = np.mean([sig_test[k] for k in enc_keys], axis=0)
+    f1_enc = f1_score(
+        sample["label"],
+        (sig_val["enc"] >= 0.5).astype(int),
+        pos_label=0)
+    print(f"\n🔥 [ENCODER META-SIGNAL] OOF F1(c0)@0.5 = {f1_enc:.4f} | backbones used: {enc_keys}")
+else:
+    print("❌ No encoder checkpoints found at all — check Kaggle dataset inputs")
+    sig_val["enc"]  = np.full(len(sample), 0.5)
+    sig_test["enc"] = np.full(len(test),   0.5)
+
 tleft()
-
-
-
-
 ```
 
 ```python
-# ===== CELL 11 — RETRIEVAL-AUGMENTED no_context (`retr`) — FAISS + Dense Embeddings =====
-retr_sim_val = np.full(len(sample), np.nan)
-retr_sim_test = np.full(len(test), np.nan)
+# ===== CELL 11 — RETRIEVAL-AUGMENTED no_context (`retr`) — FAISS + Dense =====
+
+import subprocess, sys
+
+def ensure_package(pkg, import_name=None):
+    import_name = import_name or pkg
+    try:
+        __import__(import_name)
+    except ImportError:
+        print(f"Installing {pkg}...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], check=True)
+        print(f"✅ {pkg} installed")
+
+# faiss-gpu if CUDA available, else faiss-cpu
+if __import__("torch").cuda.is_available():
+    ensure_package("faiss-gpu", "faiss")
+else:
+    ensure_package("faiss-cpu", "faiss")
+
+ensure_package("sentence-transformers", "sentence_transformers")
+retr_sim_val  = np.full(len(sample), np.nan)
+retr_sim_test = np.full(len(test),   np.nan)
 
 def build_retr_signal():
     global retr_sim_val, retr_sim_test
-    keep_for_retr_val = globals().get("keep_for_retr")
-    if not (cfg.use_retrieval and wiki_passages and keep_for_retr_val):
+
+    # ── Safe keep_for_retr access ─────────────────────────────────────────────
+    _kfr = globals().get("keep_for_retr", None)
+
+    # Retrieval still works without BanglaBERT reranker — uses sim scores directly
+    if not cfg.use_retrieval or not wiki_passages:
+        print("⚠ Retrieval disabled or no wiki passages — skipping")
         return np.full(len(sample), np.nan), np.full(len(test), np.nan)
 
-    chunks = []
-    chunk_size, overlap = cfg.chunk_size, cfg.chunk_overlap
-    step = chunk_size - overlap
+    # ── Build passage chunks ──────────────────────────────────────────────────
+    chunks     = []
+    chunk_size = cfg.chunk_size
+    overlap    = cfg.chunk_overlap
+    step       = chunk_size - overlap
+
     for p in wiki_passages:
         for i in range(0, max(1, len(p) - overlap), step):
             c = p[i:i + chunk_size]
@@ -607,33 +646,36 @@ def build_retr_signal():
                 chunks.append(c)
         if len(chunks) >= cfg.n_passages:
             break
-    print(f"retrieval corpus: {len(chunks)} passages (size={chunk_size}, overlap={overlap})")
+    print(f"retrieval corpus: {len(chunks)} passages "
+          f"(size={chunk_size}, overlap={overlap})")
 
+    if not chunks:
+        print("⚠ No chunks built — skipping retrieval")
+        return np.full(len(sample), np.nan), np.full(len(test), np.nan)
+
+    # ── Build FAISS index ─────────────────────────────────────────────────────
     from sentence_transformers import SentenceTransformer
     import faiss
 
     embed_path = resolve_model("paraphrase-multilingual-MiniLM", cfg.retr_embed_id)
-    embed = SentenceTransformer(embed_path, device=DEVICE)
+    embed      = SentenceTransformer(embed_path, device=DEVICE)
 
     embs = []
-    batch = 128
-    for i in range(0, len(chunks), batch):
-        embs.append(
-            embed.encode(
-                chunks[i:i + batch],
-                batch_size=batch,
-                show_progress_bar=False,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
-        )
+    for i in range(0, len(chunks), 128):
+        embs.append(embed.encode(
+            chunks[i:i + 128],
+            batch_size=128,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        ))
     Mx = np.vstack(embs).astype(np.float32)
-    d = Mx.shape[1]
+    d  = Mx.shape[1]
 
     index = None
     if torch.cuda.is_available():
         try:
-            res = faiss.StandardGpuResources()
+            res   = faiss.StandardGpuResources()
             index = faiss.GpuIndexFlatIP(res, d)
             print("FAISS: GPU flat inner-product index")
         except Exception as e:
@@ -642,72 +684,95 @@ def build_retr_signal():
         index = faiss.IndexFlatIP(d)
         print("FAISS: CPU flat inner-product index")
     index.add(Mx)
+    print(f"FAISS index built: {index.ntotal} vectors, dim={d}")
 
-    model, tok = keep_for_retr_val
-
+    # ── Score one dataframe ───────────────────────────────────────────────────
     def score(df):
-        out = np.full(len(df), np.nan)
+        out     = np.full(len(df), np.nan)
         sim_out = np.full(len(df), np.nan)
+
         idx = np.where(df["no_ctx"].values)[0]
         if len(idx) == 0:
             return out, sim_out
 
-        sub = df.iloc[idx]
+        sub     = df.iloc[idx]
         prompts = sub["prompt_bn"].astype(str).tolist()
-        q_embs = embed.encode(
+        q_embs  = embed.encode(
             prompts,
             batch_size=64,
             show_progress_bar=False,
             convert_to_numpy=True,
             normalize_embeddings=True,
         ).astype(np.float32)
+
         D, I = index.search(q_embs, cfg.retr_topk)
 
-        prem, resp = [], []
-        for ri, (r_, ti, sims) in enumerate(zip(sub.itertuples(), I, D)):
-            sim_out[idx[ri]] = float(sims[0])
-            for j in ti:
-                prem.append(str(r_.prompt_bn) + " " + chunks[j])
-                resp.append(str(r_.response_bn))
-
-        pp = predict_proba(
-            model,
-            tok,
-            pd.DataFrame({"premise": prem, "response": resp}),
-            cfg.max_len,
-            cfg.batch_size * 2,
-        )
-        scores_2d = pp.reshape(len(idx), cfg.retr_topk)
-
         MIN_SIM = 0.05
-        weights = np.array([1 / (i + 1) for i in range(cfg.retr_topk)])
-        for ri, (ti_row, sim_row) in enumerate(zip(I, D)):
-            valid_mask = sim_row >= MIN_SIM
-            if not valid_mask.any():
-                valid_mask[0] = True
-            w = weights * valid_mask
-            scores_2d[ri] = scores_2d[ri] * (w / w.sum())
+        weights = np.array([1 / (i + 1) for i in range(cfg.retr_topk)],
+                           dtype=np.float32)
 
-        out[idx] = scores_2d.sum(1)
+        # ── Branch A: BanglaBERT reranking available ──────────────────────
+        if _kfr is not None:
+            model, tok = _kfr
+            prem, resp = [], []
+            for ri, (r_, ti, sims) in enumerate(
+                    zip(sub.itertuples(), I, D)):
+                sim_out[idx[ri]] = float(sims[0])
+                for j in ti:
+                    prem.append(str(r_.prompt_bn) + " " + chunks[j])
+                    resp.append(str(r_.response_bn))
+
+            pp = predict_proba(
+                model, tok,
+                pd.DataFrame({"premise": prem, "response": resp}),
+                cfg.max_len, cfg.batch_size * 2,
+            )
+            scores_2d = pp.reshape(len(idx), cfg.retr_topk).copy()
+
+            for ri, sim_row in enumerate(D):
+                valid = sim_row >= MIN_SIM
+                if not valid.any(): valid[0] = True
+                w = weights * valid
+                scores_2d[ri] = scores_2d[ri] * (w / w.sum())
+
+            out[idx] = scores_2d.sum(1)
+
+        # ── Branch B: no reranker — use raw FAISS similarity ─────────────
+        else:
+            print("  ℹ No BanglaBERT reranker — using FAISS similarity scores")
+            for ri, (sim_row, score_row) in enumerate(zip(D, I)):
+                sim_out[idx[ri]] = float(sim_row[0])
+                valid = sim_row >= MIN_SIM
+                if not valid.any(): valid[0] = True
+                w = weights * valid
+                out[idx[ri]] = float((sim_row * (w / w.sum())).sum())
+
         return out, sim_out
 
-    rv, retr_sim_val = score(sample)
+    # ── Run on val and test ───────────────────────────────────────────────────
+    rv, retr_sim_val  = score(sample)
     rt, retr_sim_test = score(test)
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
     del embed, index, Mx
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+    has_retr = (~np.isnan(rv)).sum()
+    print(f"✅ Retrieval done: {has_retr}/{len(sample)} val rows scored "
+          f"({'with' if _kfr else 'without'} BanglaBERT reranking)")
     return rv, rt
 
+
 retr_val, retr_test = build_retr_signal()
-if globals().get("keep_for_retr"):
+
+# Safe delete keep_for_retr
+if globals().get("keep_for_retr") is not None:
     del globals()["keep_for_retr"]
     gc.collect()
     torch.cuda.empty_cache()
-
-
-
-
+    print("✅ keep_for_retr released")
 ```
 
 ```python
@@ -774,7 +839,42 @@ nuclear_clear()
 ```
 
 ```python
+!pip install -q -U "bitsandbytes>=0.46.1" "accelerate>=0.30"
+```
+
+```python
 # ===== CELL 13 — DUAL-LLM JUDGE (SEQUENTIAL, SELF-CONTAINED) =====
+# NOTE: if bitsandbytes ImportError persists after installing, you MUST restart
+# the kernel (Run -> Restart Session) and re-run from the top. transformers
+# caches its bitsandbytes-availability check the first time it's queried in a
+# session, so a runtime install after that point will not be picked up.
+import subprocess, sys
+
+def ensure_pkg(pkg, import_name=None):
+    try:
+        __import__(import_name or pkg)
+    except ImportError:
+        print(f"Installing {pkg}...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-U", pkg], check=True)
+        print(f"✅ {pkg} installed — RESTART THE KERNEL NOW, then re-run this cell.")
+
+ensure_pkg("bitsandbytes")
+ensure_pkg("accelerate")
+
+# Hard check — fail loudly instead of limping into the same ImportError deeper in the cell.
+import importlib
+try:
+    import bitsandbytes as _bnb_check
+    _bnb_ver = getattr(_bnb_check, "__version__", "unknown")
+    print(f"bitsandbytes version available in this kernel: {_bnb_ver}")
+except ImportError:
+    raise RuntimeError(
+        "bitsandbytes still not importable in this kernel even after pip install. "
+        "This almost always means transformers cached an earlier 'unavailable' check "
+        "before the install ran. RESTART THE SESSION (Run -> Restart Session), then "
+        "re-run this cell from the top — do not keep retrying in the same kernel."
+    )
+
 cfg.llm_input_len = 512
 import re, os, gc, torch, ctypes, numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -785,7 +885,7 @@ def is_math_or_logic(prompt, ctx=""):
     math_terms = ["কত", "যোগ", "বিয়োগ", "গুণ", "ভাগ", "শতকরা",
                   "শতাংশ", "গণিত", "হিসাব", "সংখ্যা"]
     if any(m in str(prompt) for m in math_terms): return True
-    if re.search(r"\d+", str(prompt)): return True
+    if re.search(r'\d+', str(prompt)): return True
     return False
 
 def is_no_ctx(ctx):
@@ -795,7 +895,7 @@ def is_no_ctx(ctx):
 def get_category(prompt_text, ctx_text, response_text):
     p_lower   = str(prompt_text).lower()
     combined  = f"{prompt_text} {ctx_text} {response_text}"
-    if re.search(r"[a-zA-Z]", combined):
+    if re.search(r'[a-zA-Z]', combined):
         return "code_mixed"
     elif ctx_text and not is_no_ctx(ctx_text):
         return "comprehension"
@@ -881,6 +981,16 @@ def nuke_gpu():
         free, total = torch.cuda.mem_get_info(i)
         print(f"  GPU{i}: {free/1e9:.1f}GB free / {total/1e9:.1f}GB total")
 
+def pick_gpu():
+    """Whichever GPU currently has the most free memory. Single-device placement
+    only — TigerLLM at ~7GB and Qwen-3B at ~2GB both fit comfortably on ONE T4,
+    so there is no reason to split across GPUs (that's what caused the earlier
+    OOM saga with device_map='balanced')."""
+    if not torch.cuda.is_available():
+        return "cpu"
+    free_by_gpu = {i: torch.cuda.mem_get_info(i)[0] for i in range(torch.cuda.device_count())}
+    return max(free_by_gpu, key=free_by_gpu.get)
+
 # ── Main engine: load one LLM, score val+test, delete ────────────────────────
 def run_llm_subengine(df_val, df_test, model_title, path_or_id, use_prequant=False):
     if not cfg.use_llm_judge:
@@ -890,39 +1000,34 @@ def run_llm_subengine(df_val, df_test, model_title, path_or_id, use_prequant=Fal
     print(f"🚀 Loading: {model_title}")
     nuke_gpu()
 
-    # Dynamic memory budget
-    free0 = torch.cuda.mem_get_info(0)[0] if torch.cuda.is_available() else 0
-    free1 = torch.cuda.mem_get_info(1)[0] if torch.cuda.device_count() > 1 else 0
-    max_mem = {
-        0: f"{max(1, int(free0 / 1e9 * 0.80))}GiB",
-        1: f"{max(1, int(free1 / 1e9 * 0.85))}GiB",
-        "cpu": "40GiB",
-    }
-    print(f"  Memory budget: {max_mem}")
+    target_gpu = pick_gpu()
+    print(f"  -> target GPU{target_gpu if target_gpu != 'cpu' else ''}")
 
     tk  = AutoTokenizer.from_pretrained(path_or_id)
     llm = None
 
     if use_prequant:
+        # Pre-quantized checkpoint — load directly onto ONE GPU, no re-quantization,
+        # no cross-GPU splitting. ~7GB comfortably fits a single 15-16GB T4/P100.
         try:
             llm = AutoModelForCausalLM.from_pretrained(
-                path_or_id,
-                device_map="balanced",
-                max_memory=max_mem,
+                path_or_id, device_map={"": target_gpu}
             ).eval()
-            print(f"  ✅ Loaded pre-quantized {model_title}")
+            print(f"  ✅ Loaded pre-quantized {model_title} on GPU{target_gpu}")
         except RuntimeError as e:
             if "memory" not in str(e).lower(): raise
-            print(f"  ⚠ OOM on balanced load — trying cpu offload")
+            print(f"  ⚠ OOM on single GPU{target_gpu} — trying CPU offload")
             nuke_gpu()
-            max_mem_offload = {0: "6GiB", 1: "8GiB", "cpu": "40GiB"}
+            free_gpu = torch.cuda.mem_get_info(target_gpu)[0]
+            safe_gb = max(2, int(free_gpu / 1e9 * 0.8))
             llm = AutoModelForCausalLM.from_pretrained(
-                path_or_id,
-                device_map="auto",
-                max_memory=max_mem_offload,
+                path_or_id, device_map="auto",
+                max_memory={target_gpu: f"{safe_gb}GiB", "cpu": "40GiB"},
             ).eval()
             print(f"  ✅ Loaded with CPU offload")
     else:
+        # On-the-fly 4-bit quantization for smaller models (Qwen 3B) — still
+        # single-GPU, since 3B in 4-bit is only ~2GB.
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -931,12 +1036,9 @@ def run_llm_subengine(df_val, df_test, model_title, path_or_id, use_prequant=Fal
         )
         try:
             llm = AutoModelForCausalLM.from_pretrained(
-                path_or_id,
-                quantization_config=bnb,
-                device_map="balanced",
-                max_memory=max_mem,
+                path_or_id, quantization_config=bnb, device_map={"": target_gpu}
             ).eval()
-            print(f"  ✅ Loaded 4-bit {model_title}")
+            print(f"  ✅ Loaded 4-bit {model_title} on GPU{target_gpu}")
         except RuntimeError as e:
             if "memory" not in str(e).lower(): raise
             print(f"  ⚠ OOM — skipping {model_title}")
@@ -958,6 +1060,7 @@ def run_llm_subengine(df_val, df_test, model_title, path_or_id, use_prequant=Fal
     nuke_gpu()
     return val_out, test_out
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SEGMENT A — TigerLLM-9B-it (pre-quantized, Bengali-native, ~7GB)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -970,7 +1073,8 @@ tiger_val, tiger_test = run_llm_subengine(
     use_prequant  = True,
 )
 print(f"  TigerLLM val F1(c0)@0.5 = "
-      f"{f1_score(sample[label], (tiger_val>=0.5).astype(int), pos_label=0):.4f}")
+      f"{f1_score(sample['label'], (tiger_val>=0.5).astype(int), pos_label=0):.4f}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEGMENT B — Qwen2.5-3B-Instruct (multilingual reasoning, ~2GB quantized)
@@ -982,12 +1086,14 @@ qwen_val, qwen_test = run_llm_subengine(
     use_prequant = False,
 )
 print(f"  Qwen val F1(c0)@0.5 = "
-      f"{f1_score(sample[label], (qwen_val>=0.5).astype(int), pos_label=0):.4f}")
+      f"{f1_score(sample['label'], (qwen_val>=0.5).astype(int), pos_label=0):.4f}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # COMBINE — weighted average (TigerLLM=0.6, Qwen=0.4)
 # ══════════════════════════════════════════════════════════════════════════════
 def safe_blend(a, b, w_a=0.6, w_b=0.4):
+    """Handles NaN gracefully — falls back to whichever signal exists."""
     a_nan = np.isnan(a)
     b_nan = np.isnan(b)
     out   = np.full(len(a), np.nan)
@@ -1006,127 +1112,176 @@ llm_val  = np.where(np.isnan(llm_val),  0.5, llm_val)
 llm_test = np.where(np.isnan(llm_test), 0.5, llm_test)
 
 print(f"\n🔥 [DUAL-LLM COMBINED] val F1(c0)@0.5 = "
-      f"{f1_score(sample[label], (llm_val>=0.5).astype(int), pos_label=0):.4f}")
+      f"{f1_score(sample['label'], (llm_val>=0.5).astype(int), pos_label=0):.4f}")
 print(f"  tiger NaN: {np.isnan(tiger_val).sum()} | "
       f"qwen NaN: {np.isnan(qwen_val).sum()} | "
       f"combined NaN: 0")
 
 tleft()
-
 ```
 
 ```python
 # ===== CELL 14 — RANK-NORMALIZE SIGNALS + META FEATURES (val∪test) =====
+import re, numpy as np, pandas as pd
+from scipy.stats import skew, kurtosis
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 SIGNAL_COLS = ("enc", "lex", "retr", "llm")
 
+# ── TF-IDF prompt↔context similarity ─────────────────────────────────────────
 def tfidf_prompt_ctx_sim(df, vec=None):
-    sim = np.full(len(df), np.nan)
+    sim  = np.full(len(df), np.nan)
     mask = ~df["no_ctx"].values
     if mask.sum() == 0:
         return sim, vec
     sub = df.loc[mask]
     if vec is None:
-        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=20000, sublinear_tf=True)
-        # Fit on both prompt and context for a comprehensive vocabulary
-        vec.fit(sub["prompt_bn"].astype(str).tolist() + sub["ctx_clean"].astype(str).tolist())
+        vec = TfidfVectorizer(
+            analyzer="char_wb", ngram_range=(3, 5),
+            max_features=20000, sublinear_tf=True)
+        vec.fit(
+            sub["prompt_bn"].astype(str).tolist() +
+            sub["ctx_clean"].astype(str).tolist())
     P = vec.transform(sub["prompt_bn"].astype(str))
     C = vec.transform(sub["ctx_clean"].astype(str))
     sim[mask] = np.asarray(P.multiply(C).sum(axis=1)).ravel()
     return sim, vec
 
+# ── Number extraction ─────────────────────────────────────────────────────────
+BN2ASCII = {ord(b): str(i) for i, b in enumerate("০১২৩৪৫৬৭৮৯")}
+NUM_PAT  = re.compile(r'\d+(?:\.\d+)?')
+def numset(text):
+    return set(NUM_PAT.findall(str(text).translate(BN2ASCII)))
+
+# ── Stack raw signals into DataFrame ─────────────────────────────────────────
 def stackX(df, sv, lex, retr, llm, retr_sim=None):
-    X = pd.DataFrame()
-    X["enc"] = sv["enc"] if "enc" in sv else np.nan
-    X["lex"] = lex if lex is not None else np.nan
-    X["retr"] = retr if retr is not None else np.nan
-    X["llm"] = llm if llm is not None else np.nan
+    """Returns just the DataFrame — no tfidf_vec_out here."""
+    X = pd.DataFrame(index=df.index)
+    X["enc"]    = sv["enc"]  if "enc"  in sv  else np.nan
+    X["lex"]    = lex        if lex    is not None else np.nan
+    X["retr"]   = retr       if retr   is not None else np.nan
+    X["llm"]    = llm        if llm    is not None else np.nan
     X["no_ctx"] = df["no_ctx"].values
-    return X
+    if retr_sim is not None:
+        X["retr_sim"] = retr_sim
+    return X                           # ← just X, nothing else
 
-
+# ── Z-score normalisation (fit on val only → apply to test) ──────────────────
 def z_score_norm(Xv, Xt):
     Xv, Xt = Xv.copy(), Xt.copy()
     for c in Xv.columns:
         if c == "no_ctx": continue
-        # Calculate mean/std ONLY on validation set to prevent data leakage from the test set
         mean = Xv[c].mean()
-        std = Xv[c].std()
+        std  = Xv[c].std()
         if std == 0 or np.isnan(std):
             std = 1.0
         Xv[c] = (Xv[c] - mean) / std
         Xt[c] = (Xt[c] - mean) / std
-    return Xv, Xt
+    return Xv, Xt                      # ← returns Xv, Xt (was returning X, tfidf_vec_outv, Xt)
 
-from scipy.stats import skew, kurtosis
-
+# ── Add engineered meta-features ─────────────────────────────────────────────
 def add_meta_features(df, X, retr_sim=None, tfidf_vec=None):
     X = X.copy()
+
+    # Length features
     X["prompt_len"] = df["prompt_bn"].astype(str).str.len().values
-    X["ctx_len"] = df["ctx_clean"].astype(str).str.len().values
-    X["resp_len"] = df["response_bn"].astype(str).str.len().values
+    X["ctx_len"]    = df["ctx_clean"].astype(str).str.len().values
+    X["resp_len"]   = df["response_bn"].astype(str).str.len().values
+
+    # TF-IDF prompt↔context similarity
     sim_res, tfidf_vec_out = tfidf_prompt_ctx_sim(df, tfidf_vec)
     X["tfidf_sim"] = sim_res
     if retr_sim is not None:
         X["retr_sim"] = retr_sim
 
+    # Cross-signal statistics (skewness, kurtosis, etc.)
     CORE = ["enc", "lex", "retr", "llm"]
     sig_matrix = np.column_stack([
-        X[c].fillna(0.5).values if c in X.columns else np.full(len(df), 0.5)
+        X[c].fillna(0.5).values if c in X.columns
+        else np.full(len(df), 0.5)
         for c in CORE
     ])
-    X["signal_skew"] = skew(sig_matrix, axis=1, bias=True)
-    X["signal_kurt"] = kurtosis(sig_matrix, axis=1, bias=True)
-    X["signal_std"] = sig_matrix.std(axis=1)
-    X["signal_range"] = sig_matrix.max(axis=1) - sig_matrix.min(axis=1)
+    X["signal_skew"]         = skew(sig_matrix, axis=1, bias=True)
+    X["signal_kurt"]         = kurtosis(sig_matrix, axis=1, bias=True)
+    X["signal_std"]          = sig_matrix.std(axis=1)
+    X["signal_range"]        = sig_matrix.max(axis=1) - sig_matrix.min(axis=1)
     X["signal_max_mean_gap"] = sig_matrix.max(axis=1) - sig_matrix.mean(axis=1)
-    X["n_signals_hallu"] = (sig_matrix < 0.5).sum(axis=1).astype(float)
+    X["n_signals_hallu"]     = (sig_matrix < 0.5).sum(axis=1).astype(float)
 
+    # Count missing signals (using pre-fillna raw values)
     sig_raw = np.column_stack([
-        X[c].values if c in X.columns else np.full(len(df), np.nan)
+        X[c].values if c in X.columns
+        else np.full(len(df), np.nan)
         for c in CORE
     ])
     X["n_signals_missing"] = np.isnan(sig_raw).sum(axis=1).astype(float)
 
-    # Category encoding for LightGBM (C1 cultural-distance routing)
-    CATEGORY_MAP = {"comprehension": 0, "math": 1, "vocabulary": 2,
-                    "general_knowledge": 3, "history": 4, "code_mixed": 5}
-    if "category" in df.columns:
-        X["category_enc"] = df["category"].map(CATEGORY_MAP).fillna(3).values
-    else:
-        X["category_enc"] = 3.0  # default to general_knowledge
-    # --- regime flags (Task/Regime Router -> meta-model) ---
+    # Category encoding
+    CATEGORY_MAP = {
+        "comprehension": 0, "math": 1, "vocabulary": 2,
+        "general_knowledge": 3, "history": 4, "code_mixed": 5
+    }
+    X["category_enc"] = (
+        df["category"].map(CATEGORY_MAP).fillna(3).values
+        if "category" in df.columns else 3.0
+    )
+
+    # Regime flags
     TRANSLATE_PAT = re.compile(r'অনুবাদ|translate|ইংরেজিতে|বাংলায়|রূপান্তর', re.I)
     SUMMARY_PAT   = re.compile(r'সারাংশ|সংক্ষেপে|summar', re.I)
     pr = df["prompt_bn"].astype(str)
     rs = df["response_bn"].astype(str)
     cx = df["ctx_clean"].astype(str)
-    
+
     X["regime_context"]     = (~df["no_ctx"].values).astype(float)
-    X["regime_factual"]     = (df["no_ctx"].values & ~pr.str.contains(TRANSLATE_PAT) & ~pr.str.contains(SUMMARY_PAT)).astype(float)
-    X["regime_translation"] = pr.str.contains(TRANSLATE_PAT, regex=True, na=False).astype(float)
-    X["regime_summary"]     = pr.str.contains(SUMMARY_PAT, regex=True, na=False).astype(float)
-    
-    X["is_math"] = [int(bool(numset(p)) and bool(numset(r))) for p, r in zip(pr, rs)]
-    X["is_translation"] = pr.str.contains("অনুবাদ|translate|ইংরেজিতে|সারাংশ|সংক্ষেপে|summar", regex=True, case=False).astype(int).values
-    X["is_mcq"] = (pr.str.contains(r"ক\)", regex=True) & pr.str.contains(r"খ\)", regex=True)).astype(int).values
+    X["regime_factual"]     = (
+        df["no_ctx"].values
+        & ~pr.str.contains(TRANSLATE_PAT, regex=True, na=False)
+        & ~pr.str.contains(SUMMARY_PAT,   regex=True, na=False)
+    ).astype(float)
+    X["regime_translation"] = pr.str.contains(
+        TRANSLATE_PAT, regex=True, na=False).astype(float)
+    X["regime_summary"]     = pr.str.contains(
+        SUMMARY_PAT,   regex=True, na=False).astype(float)
+
+    # Task-type flags
+    X["is_math"]        = [
+        int(bool(numset(p)) and bool(numset(r)))
+        for p, r in zip(pr, rs)
+    ]
+    X["is_translation"] = pr.str.contains(
+        r"অনুবাদ|translate|ইংরেজিতে|সারাংশ|সংক্ষেপে|summar",
+        regex=True, case=False, na=False).astype(int).values
+    X["is_mcq"]         = (
+        pr.str.contains(r"ক\)", regex=True, na=False) &
+        pr.str.contains(r"খ\)", regex=True, na=False)
+    ).astype(int).values
+
+    # Number support score
     def _numsup(p, r, c):
         nr = numset(r)
         return -1.0 if not nr else len(nr & (numset(p) | numset(c))) / len(nr)
-    X["number_support"] = [_numsup(p, r, c) for p, r, c in zip(pr, rs, cx)]
-    return X
-Xv = stackX(sample, sig_val, lex_val, retr_val, llm_val, retr_sim_val)
-Xt = stackX(test, sig_test, lex_test, retr_test, llm_test, retr_sim_test)
-Xv, fitted_tfidf = add_meta_features(sample, Xv, retr_sim_val, None)
-Xt, _ = add_meta_features(test, Xt, retr_sim_test, fitted_tfidf)
+    X["number_support"] = [
+        _numsup(p, r, c) for p, r, c in zip(pr, rs, cx)
+    ]
+
+    return X, tfidf_vec_out            # ← returns (X, vec) correctly
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXECUTE
+# ══════════════════════════════════════════════════════════════════════════════
+Xv = stackX(sample, sig_val,  lex_val,  retr_val,  llm_val,  retr_sim_val)
+Xt = stackX(test,   sig_test, lex_test, retr_test, llm_test, retr_sim_test)
+
+Xv, fitted_tfidf = add_meta_features(sample, Xv, retr_sim_val,  None)
+Xt, _            = add_meta_features(test,   Xt, retr_sim_test, fitted_tfidf)
+
 Xv, Xt = z_score_norm(Xv, Xt)
 yv = sample["label"].values
-print("signals:", [c for c in Xv.columns if c != "no_ctx"])
 
-
-
-
-
-
+print(f"✅ Feature matrix built: {Xv.shape}")
+print(f"   Signals: {[c for c in Xv.columns if c != 'no_ctx']}")
 ```
 
 ```python
