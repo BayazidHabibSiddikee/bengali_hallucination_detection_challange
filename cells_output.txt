@@ -1,0 +1,616 @@
+
+========================================
+CELL 14
+========================================
+  1: # ===== CELL 13 — DUAL-LLM JUDGE (SEQUENTIAL, SELF-CONTAINED) =====
+  2: cfg.llm_input_len = 512
+  3: import re, os, gc, torch, ctypes, numpy as np
+  4: from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+  5: from sklearn.metrics import f1_score
+  6: 
+  7: # ── Helper: detect math/logic questions ──────────────────────────────────────
+  8: def is_math_or_logic(prompt, ctx=""):
+  9:     math_terms = ["কত", "যোগ", "বিয়োগ", "গুণ", "ভাগ", "শতকরা",
+ 10:                   "শতাংশ", "গণিত", "হিসাব", "সংখ্যা"]
+ 11:     if any(m in str(prompt) for m in math_terms): return True
+ 12:     if re.search(r"\d+", str(prompt)): return True
+ 13:     return False
+ 14: 
+ 15: def is_no_ctx(ctx):
+ 16:     return not ctx or str(ctx).strip().lower() in {"", "null", "none", "nan", "[null]"}
+ 17: 
+ 18: # ── Helper: route each row to a category ─────────────────────────────────────
+ 19: def get_category(prompt_text, ctx_text, response_text):
+ 20:     p_lower   = str(prompt_text).lower()
+ 21:     combined  = f"{prompt_text} {ctx_text} {response_text}"
+ 22:     if re.search(r"[a-zA-Z]", combined):
+ 23:         return "code_mixed"
+ 24:     elif ctx_text and not is_no_ctx(ctx_text):
+ 25:         return "comprehension"
+ 26:     elif any(k in p_lower for k in ["অর্থ", "ভাবার্থ", "সমার্থক",
+ 27:                                      "বিপরীত", "মানে কী"]):
+ 28:         return "vocabulary"
+ 29:     elif is_math_or_logic(prompt_text):
+ 30:         return "math"
+ 31:     else:
+ 32:         return "general_knowledge"
+ 33: 
+ 34: # ── Helper: build system prompt per category ─────────────────────────────────
+ 35: def build_sys_prompt(category):
+ 36:     base = "কোনো ব্যাখ্যা দেবেন না। শুধুমাত্র একটি সংখ্যা আউটপুট দিন।"
+ 37:     prompts = {
+ 38:         "code_mixed": (
+ 39:             "আপনি একজন বহুভাষিক ডেটা বিশ্লেষক। ভাষার মিশ্রণ থাকা সত্ত্বেও "
+ 40:             "মূল অর্থটি যাচাই করুন। উত্তর সঠিক হলে '1', ভুল বা বানোয়াট হলে '0' লিখুন। "
+ 41:         ),
+ 42:         "comprehension": (
+ 43:             "আপনি একটি হ্যালুসিনেশন সনাক্তকরণ এআই। অনুচ্ছেদের তথ্যের সাথে "
+ 44:             "উত্তর মিললে '1', সাংঘর্ষিক হলে '0' লিখুন। "
+ 45:         ),
+ 46:         "vocabulary": (
+ 47:             "আপনি একজন বাংলা ভাষাবিদ। শব্দের সঠিক অর্থ হলে '1', "
+ 48:             "ভুল বা মনগড়া হলে '0' লিখুন। "
+ 49:         ),
+ 50:         "math": (
+ 51:             "আপনি একজন গাণিতিক মূল্যায়নকারী। হিসাব সম্পূর্ণ সঠিক হলে '1', "
+ 52:             "সামান্যতম ভুল থাকলে '0' লিখুন। "
+ 53:         ),
+ 54:         "general_knowledge": (
+ 55:             "আপনি একজন তথ্য-যাচাইকারী। উত্তর সম্পূর্ণ সত্য হলে '1', "
+ 56:             "ভুল বা বানোয়াট হলে '0' লিখুন। "
+ 57:         ),
+ 58:     }
+ 59:     return prompts.get(category, prompts["general_knowledge"]) + base
+ 60: 
+ 61: # ── Helper: get token IDs for 0 and 1 ────────────────────────────────────────
+ 62: def digit_ids(tk, d):
+ 63:     ids = set()
+ 64:     for s in (d, f" {d}", f"▁{d}"):
+ 65:         e = tk.encode(s, add_special_tokens=False)
+ 66:         if e: ids.add(e[-1])
+ 67:     return list(ids) if ids else [tk.encode(d, add_special_tokens=False)[-1]]
+ 68: 
+ 69: # ── Core: score one dataframe with one LLM ───────────────────────────────────
+ 70: def score_df_with_llm(df, llm, tk, ids1, ids0, dev, model_title):
+ 71:     out = np.zeros(len(df))
+ 72:     for i, r in enumerate(df.itertuples()):
+ 73:         ctx = getattr(r, "ctx_clean", "")
+ 74:         if is_no_ctx(ctx): ctx = ""
+ 75:         cat = get_category(r.prompt_bn, ctx, r.response_bn)
+ 76:         SYS = build_sys_prompt(cat)
+ 77:         u   = (f"CONTEXT: {ctx}\n" if ctx else "") + \
+ 78:               f"QUESTION: {r.prompt_bn}\nANSWER: {r.response_bn}\nVerdict:"
+ 79:         enc = tk.apply_chat_template(
+ 80:             [{"role": "system", "content": SYS},
+ 81:              {"role": "user",   "content": u}],
+ 82:             add_generation_prompt=True,
+ 83:             return_tensors="pt", return_dict=True)
+ 84:         ii = enc["input_ids"][:,  -cfg.llm_input_len:].to(dev)
+ 85:         am = enc["attention_mask"][:, -cfg.llm_input_len:].to(dev)
+ 86:         with torch.no_grad():
+ 87:             lg = llm(input_ids=ii, attention_mask=am).logits[0, -1, :].float()
+ 88:         p1 = torch.logsumexp(lg[ids1], 0)
+ 89:         p0 = torch.logsumexp(lg[ids0], 0)
+ 90:         out[i] = torch.softmax(torch.stack([p0, p1]), 0)[1].item()
+ 91:         if i % 200 == 0:
+ 92:             print(f"  [{model_title}] {i}/{len(df)} | cat={cat}")
+ 93:     return out
+ 94: 
+ 95: # ── Nuclear memory clear ──────────────────────────────────────────────────────
+ 96: def nuke_gpu():
+ 97:     gc.collect()
+ 98:     if torch.cuda.is_available():
+ 99:         torch.cuda.synchronize()
+100:         torch.cuda.empty_cache()
+101:         torch.cuda.ipc_collect()
+102:     try: ctypes.CDLL("libc.so.6").malloc_trim(0)
+103:     except: pass
+104:     for i in range(torch.cuda.device_count()):
+105:         free, total = torch.cuda.mem_get_info(i)
+106:         print(f"  GPU{i}: {free/1e9:.1f}GB free / {total/1e9:.1f}GB total")
+107: 
+108: # ── Main engine: load one LLM, score val+test, delete ────────────────────────
+109: def run_llm_subengine(df_val, df_test, model_title, path_or_id, use_prequant=False):
+110:     if not cfg.use_llm_judge:
+111:         return np.full(len(df_val), np.nan), np.full(len(df_test), np.nan)
+112: 
+113:     print(f"\n{'='*60}")
+114:     print(f"🚀 Loading: {model_title}")
+115:     nuke_gpu()
+116: 
+117:     # Dynamic memory budget
+118:     free0 = torch.cuda.mem_get_info(0)[0] if torch.cuda.is_available() else 0
+119:     free1 = torch.cuda.mem_get_info(1)[0] if torch.cuda.device_count() > 1 else 0
+120:     max_mem = {
+121:         0: f"{max(1, int(free0 / 1e9 * 0.80))}GiB",
+122:         1: f"{max(1, int(free1 / 1e9 * 0.85))}GiB",
+123:         "cpu": "40GiB",
+124:     }
+125:     print(f"  Memory budget: {max_mem}")
+126: 
+127:     tk  = AutoTokenizer.from_pretrained(path_or_id)
+128:     llm = None
+129: 
+130:     if use_prequant:
+131:         try:
+132:             llm = AutoModelForCausalLM.from_pretrained(
+133:                 path_or_id,
+134:                 device_map="balanced",
+135:                 max_memory=max_mem,
+136:             ).eval()
+137:             print(f"  ✅ Loaded pre-quantized {model_title}")
+138:         except RuntimeError as e:
+139:             if "memory" not in str(e).lower(): raise
+140:             print(f"  ⚠ OOM on balanced load — trying cpu offload")
+141:             nuke_gpu()
+142:             max_mem_offload = {0: "6GiB", 1: "8GiB", "cpu": "40GiB"}
+143:             llm = AutoModelForCausalLM.from_pretrained(
+144:                 path_or_id,
+145:                 device_map="auto",
+146:                 max_memory=max_mem_offload,
+147:             ).eval()
+148:             print(f"  ✅ Loaded with CPU offload")
+149:     else:
+150:         bnb = BitsAndBytesConfig(
+151:             load_in_4bit=True,
+152:             bnb_4bit_quant_type="nf4",
+153:             bnb_4bit_compute_dtype=torch.bfloat16,
+154:             bnb_4bit_use_double_quant=True,
+155:         )
+156:         try:
+157:             llm = AutoModelForCausalLM.from_pretrained(
+158:                 path_or_id,
+159:                 quantization_config=bnb,
+160:                 device_map="balanced",
+161:                 max_memory=max_mem,
+162:             ).eval()
+163:             print(f"  ✅ Loaded 4-bit {model_title}")
+164:         except RuntimeError as e:
+165:             if "memory" not in str(e).lower(): raise
+166:             print(f"  ⚠ OOM — skipping {model_title}")
+167:             del tk; gc.collect(); torch.cuda.empty_cache()
+168:             return np.full(len(df_val), np.nan), np.full(len(df_test), np.nan)
+169: 
+170:     dev  = next(llm.parameters()).device
+171:     ids1 = digit_ids(tk, "1")
+172:     ids0 = digit_ids(tk, "0")
+173:     print(f"  Primary device: {dev} | ids1={ids1} | ids0={ids0}")
+174: 
+175:     print(f"  Scoring val ({len(df_val)} rows)...")
+176:     val_out  = score_df_with_llm(df_val,  llm, tk, ids1, ids0, dev, model_title)
+177: 
+178:     print(f"  Scoring test ({len(df_test)} rows)...")
+179:     test_out = score_df_with_llm(df_test, llm, tk, ids1, ids0, dev, model_title)
+180: 
+181:     del llm, tk
+182:     nuke_gpu()
+183:     return val_out, test_out
+184: 
+185: # ══════════════════════════════════════════════════════════════════════════════
+186: # SEGMENT A — TigerLLM-9B-it (pre-quantized, Bengali-native, ~7GB)
+187: # ══════════════════════════════════════════════════════════════════════════════
+188: PREQUANT_PATH = "/kaggle/input/datasets/bayazidhs/tigerllm-9b-4bit/tigerllm-9b-4bit"
+189: 
+190: tiger_val, tiger_test = run_llm_subengine(
+191:     sample, test,
+192:     model_title   = "TigerLLM-9B-it [Pre-quantized]",
+193:     path_or_id    = PREQUANT_PATH,
+194:     use_prequant  = True,
+195: )
+196: print(f"  TigerLLM val F1(c0)@0.5 = "
+197:       f"{f1_score(sample[label], (tiger_val>=0.5).astype(int), pos_label=0):.4f}")
+198: 
+199: # ══════════════════════════════════════════════════════════════════════════════
+200: # SEGMENT B — Qwen2.5-3B-Instruct (multilingual reasoning, ~2GB quantized)
+201: # ══════════════════════════════════════════════════════════════════════════════
+202: qwen_val, qwen_test = run_llm_subengine(
+203:     sample, test,
+204:     model_title  = "Qwen2.5-3B-Instruct",
+205:     path_or_id   = "Qwen/Qwen2.5-3B-Instruct",
+206:     use_prequant = False,
+207: )
+208: print(f"  Qwen val F1(c0)@0.5 = "
+209:       f"{f1_score(sample[label], (qwen_val>=0.5).astype(int), pos_label=0):.4f}")
+210: 
+211: # ══════════════════════════════════════════════════════════════════════════════
+212: # COMBINE — weighted average (TigerLLM=0.6, Qwen=0.4)
+213: # ══════════════════════════════════════════════════════════════════════════════
+214: def safe_blend(a, b, w_a=0.6, w_b=0.4):
+215:     a_nan = np.isnan(a)
+216:     b_nan = np.isnan(b)
+217:     out   = np.full(len(a), np.nan)
+218:     both  = ~a_nan & ~b_nan
+219:     only_a = ~a_nan & b_nan
+220:     only_b =  a_nan & ~b_nan
+221:     out[both]   = w_a * a[both]   + w_b * b[both]
+222:     out[only_a] = a[only_a]
+223:     out[only_b] = b[only_b]
+224:     return out
+225: 
+226: llm_val  = safe_blend(tiger_val,  qwen_val,  w_a=0.6, w_b=0.4)
+227: llm_test = safe_blend(tiger_test, qwen_test, w_a=0.6, w_b=0.4)
+228: 
+229: llm_val  = np.where(np.isnan(llm_val),  0.5, llm_val)
+230: llm_test = np.where(np.isnan(llm_test), 0.5, llm_test)
+231: 
+232: print(f"\n🔥 [DUAL-LLM COMBINED] val F1(c0)@0.5 = "
+233:       f"{f1_score(sample[label], (llm_val>=0.5).astype(int), pos_label=0):.4f}")
+234: print(f"  tiger NaN: {np.isnan(tiger_val).sum()} | "
+235:       f"qwen NaN: {np.isnan(qwen_val).sum()} | "
+236:       f"combined NaN: 0")
+237: 
+238: tleft()
+
+========================================
+CELL 15
+========================================
+  1: # ===== CELL 14 — RANK-NORMALIZE SIGNALS + META FEATURES (val∪test) =====
+  2: SIGNAL_COLS = ("enc", "lex", "retr", "llm")
+  3: 
+  4: def tfidf_prompt_ctx_sim(df, vec=None):
+  5:     sim = np.full(len(df), np.nan)
+  6:     mask = ~df["no_ctx"].values
+  7:     if mask.sum() == 0:
+  8:         return sim, vec
+  9:     sub = df.loc[mask]
+ 10:     if vec is None:
+ 11:         vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=20000, sublinear_tf=True)
+ 12:         # Fit on both prompt and context for a comprehensive vocabulary
+ 13:         vec.fit(sub["prompt_bn"].astype(str).tolist() + sub["ctx_clean"].astype(str).tolist())
+ 14:     P = vec.transform(sub["prompt_bn"].astype(str))
+ 15:     C = vec.transform(sub["ctx_clean"].astype(str))
+ 16:     sim[mask] = np.asarray(P.multiply(C).sum(axis=1)).ravel()
+ 17:     return sim, vec
+ 18: 
+ 19: def stackX(df, sv, lex, retr, llm, retr_sim=None):
+ 20:     X = pd.DataFrame()
+ 21:     X["enc"] = sv["enc"] if "enc" in sv else np.nan
+ 22:     X["lex"] = lex if lex is not None else np.nan
+ 23:     X["retr"] = retr if retr is not None else np.nan
+ 24:     X["llm"] = llm if llm is not None else np.nan
+ 25:     X["no_ctx"] = df["no_ctx"].values
+ 26:     return X
+ 27: 
+ 28: 
+ 29: def z_score_norm(Xv, Xt):
+ 30:     Xv, Xt = Xv.copy(), Xt.copy()
+ 31:     for c in Xv.columns:
+ 32:         if c == "no_ctx": continue
+ 33:         # Calculate mean/std ONLY on validation set to prevent data leakage from the test set
+ 34:         mean = Xv[c].mean()
+ 35:         std = Xv[c].std()
+ 36:         if std == 0 or np.isnan(std):
+ 37:             std = 1.0
+ 38:         Xv[c] = (Xv[c] - mean) / std
+ 39:         Xt[c] = (Xt[c] - mean) / std
+ 40:     return Xv, Xt
+ 41: 
+ 42: from scipy.stats import skew, kurtosis
+ 43: 
+ 44: def add_meta_features(df, X, retr_sim=None, tfidf_vec=None):
+ 45:     X = X.copy()
+ 46:     X["prompt_len"] = df["prompt_bn"].astype(str).str.len().values
+ 47:     X["ctx_len"] = df["ctx_clean"].astype(str).str.len().values
+ 48:     X["resp_len"] = df["response_bn"].astype(str).str.len().values
+ 49:     sim_res, tfidf_vec_out = tfidf_prompt_ctx_sim(df, tfidf_vec)
+ 50:     X["tfidf_sim"] = sim_res
+ 51:     if retr_sim is not None:
+ 52:         X["retr_sim"] = retr_sim
+ 53: 
+ 54:     CORE = ["enc", "lex", "retr", "llm"]
+ 55:     sig_matrix = np.column_stack([
+ 56:         X[c].fillna(0.5).values if c in X.columns else np.full(len(df), 0.5)
+ 57:         for c in CORE
+ 58:     ])
+ 59:     X["signal_skew"] = skew(sig_matrix, axis=1, bias=True)
+ 60:     X["signal_kurt"] = kurtosis(sig_matrix, axis=1, bias=True)
+ 61:     X["signal_std"] = sig_matrix.std(axis=1)
+ 62:     X["signal_range"] = sig_matrix.max(axis=1) - sig_matrix.min(axis=1)
+ 63:     X["signal_max_mean_gap"] = sig_matrix.max(axis=1) - sig_matrix.mean(axis=1)
+ 64:     X["n_signals_hallu"] = (sig_matrix < 0.5).sum(axis=1).astype(float)
+ 65: 
+ 66:     sig_raw = np.column_stack([
+ 67:         X[c].values if c in X.columns else np.full(len(df), np.nan)
+ 68:         for c in CORE
+ 69:     ])
+ 70:     X["n_signals_missing"] = np.isnan(sig_raw).sum(axis=1).astype(float)
+ 71: 
+ 72:     # Category encoding for LightGBM (C1 cultural-distance routing)
+ 73:     CATEGORY_MAP = {"comprehension": 0, "math": 1, "vocabulary": 2,
+ 74:                     "general_knowledge": 3, "history": 4, "code_mixed": 5}
+ 75:     if "category" in df.columns:
+ 76:         X["category_enc"] = df["category"].map(CATEGORY_MAP).fillna(3).values
+ 77:     else:
+ 78:         X["category_enc"] = 3.0  # default to general_knowledge
+ 79:     # --- regime flags (Task/Regime Router -> meta-model) ---
+ 80:     TRANSLATE_PAT = re.compile(r'অনুবাদ|translate|ইংরেজিতে|বাংলায়|রূপান্তর', re.I)
+ 81:     SUMMARY_PAT   = re.compile(r'সারাংশ|সংক্ষেপে|summar', re.I)
+ 82:     pr = df["prompt_bn"].astype(str)
+ 83:     rs = df["response_bn"].astype(str)
+ 84:     cx = df["ctx_clean"].astype(str)
+ 85:     
+ 86:     X["regime_context"]     = (~df["no_ctx"].values).astype(float)
+ 87:     X["regime_factual"]     = (df["no_ctx"].values & ~pr.str.contains(TRANSLATE_PAT) & ~pr.str.contains(SUMMARY_PAT)).astype(float)
+ 88:     X["regime_translation"] = pr.str.contains(TRANSLATE_PAT, regex=True, na=False).astype(float)
+ 89:     X["regime_summary"]     = pr.str.contains(SUMMARY_PAT, regex=True, na=False).astype(float)
+ 90:     
+ 91:     X["is_math"] = [int(bool(numset(p)) and bool(numset(r))) for p, r in zip(pr, rs)]
+ 92:     X["is_translation"] = pr.str.contains("অনুবাদ|translate|ইংরেজিতে|সারাংশ|সংক্ষেপে|summar", regex=True, case=False).astype(int).values
+ 93:     X["is_mcq"] = (pr.str.contains(r"ক\)", regex=True) & pr.str.contains(r"খ\)", regex=True)).astype(int).values
+ 94:     def _numsup(p, r, c):
+ 95:         nr = numset(r)
+ 96:         return -1.0 if not nr else len(nr & (numset(p) | numset(c))) / len(nr)
+ 97:     X["number_support"] = [_numsup(p, r, c) for p, r, c in zip(pr, rs, cx)]
+ 98:     return X
+ 99: Xv = stackX(sample, sig_val, lex_val, retr_val, llm_val, retr_sim_val)
+100: Xt = stackX(test, sig_test, lex_test, retr_test, llm_test, retr_sim_test)
+101: Xv, fitted_tfidf = add_meta_features(sample, Xv, retr_sim_val, None)
+102: Xt, _ = add_meta_features(test, Xt, retr_sim_test, fitted_tfidf)
+103: Xv, Xt = z_score_norm(Xv, Xt)
+104: yv = sample["label"].values
+105: print("signals:", [c for c in Xv.columns if c != "no_ctx"])
+106: 
+107: 
+108: 
+109: 
+110: 
+
+========================================
+CELL 16
+========================================
+  1: # ===== CELL 15 — LIGHTGBM META-MODEL STACKING (replaces Powell blender) =====
+  2: import lightgbm as lgb
+  3: from sklearn.calibration import CalibratedClassifierCV
+  4: from sklearn.linear_model import LogisticRegression
+  5: from sklearn.model_selection import StratifiedKFold
+  6: 
+  7: def f1c0(yy, p, t):
+  8:     return f1_score(yy, (p >= t).astype(int), pos_label=0)
+  9: 
+ 10: FEAT_COLS = [c for c in Xv.columns if c != "no_ctx"]
+ 11: 
+ 12: def tune_threshold(p, y, n_boot=cfg.n_boot, seed=SEED):
+ 13:     m = len(y)
+ 14:     rng = np.random.RandomState(seed)
+ 15:     grid = np.quantile(p, np.linspace(0.05, 0.95, 60))
+ 16:     picks = []
+ 17:     for _ in range(n_boot):
+ 18:         b = rng.randint(0, m, m)
+ 19:         pb, yb = p[b], y[b]
+ 20:         pred0 = (pb[:, None] < grid[None, :]).astype(np.float32)
+ 21:         tp = ((yb == 0)[:, None] * pred0).sum(0)
+ 22:         f1 = 2 * tp / np.maximum(pred0.sum(0) + (yb == 0).sum(), 1e-9)
+ 23:         picks.append(grid[int(f1.argmax())])
+ 24:     return float(np.median(picks))
+ 25: 
+ 26: def fit_lgbm(X, y, mask, seed=SEED):
+ 27:     Xr = X.loc[mask, FEAT_COLS].reset_index(drop=True)
+ 28:     yr = y[mask]
+ 29:     
+ 30:     params = dict(
+ 31:         objective="binary", metric="binary_logloss", verbosity=-1, seed=seed,
+ 32:         learning_rate=0.02, num_leaves=7, min_data_in_leaf=15,
+ 33:         feature_fraction=0.9, bagging_fraction=0.8, bagging_freq=1,
+ 34:         lambda_l1=0.1, lambda_l2=0.5
+ 35:     )
+ 36:     
+ 37:     # 5-Fold OOF Predictions for Threshold Tuning
+ 38:     oof_p = np.zeros(len(yr))
+ 39:     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+ 40:     
+ 41:     for trn_idx, val_idx in skf.split(Xr, yr):
+ 42:         X_trn, y_trn = Xr.iloc[trn_idx], yr[trn_idx]
+ 43:         X_val = Xr.iloc[val_idx]
+ 44:         
+ 45:         m_cv = lgb.train(params, lgb.Dataset(X_trn, label=y_trn, categorical_feature=['category_enc']), num_boost_round=35)
+ 46:         oof_p[val_idx] = m_cv.predict(X_val)
+ 47:         
+ 48:     t = tune_threshold(oof_p, yr)
+ 49:     oof_f1 = f1c0(yr, oof_p, t)
+ 50:     
+ 51:     # Final Model trained on 100% of data
+ 52:     model = lgb.train(params, lgb.Dataset(Xr, label=yr, categorical_feature=['category_enc']), num_boost_round=35)
+ 53:     return model, t, oof_f1, oof_p
+ 54: 
+ 55: def lgbm_predict(X, model):
+ 56:     return model.predict(X[FEAT_COLS])
+ 57: 
+ 58: mask_ctx = ~sample["no_ctx"].values
+ 59: mask_no = sample["no_ctx"].values
+ 60: lgb_ctx, tc, fc, oof_ctx = fit_lgbm(Xv, yv, mask_ctx)
+ 61: lgb_noctx, tn, fn, oof_no = fit_lgbm(Xv, yv, mask_no)
+ 62: 
+ 63: # honest validation view = OOF probabilities, never the refit model's in-sample fit
+ 64: def calibrate_probs(oof_p, y):
+ 65:     cal = LogisticRegression(C=1.0, max_iter=1000)
+ 66:     cal.fit(oof_p.reshape(-1,1), y)
+ 67:     return cal
+ 68: 
+ 69: def apply_calibration(cal, p):
+ 70:     return cal.predict_proba(p.reshape(-1,1))[:,1]
+ 71: 
+ 72: cal_ctx   = calibrate_probs(oof_ctx, yv[mask_ctx])
+ 73: cal_noctx = calibrate_probs(oof_no,  yv[mask_no])
+ 74: 
+ 75: oof_ctx_cal = apply_calibration(cal_ctx,   oof_ctx)
+ 76: oof_no_cal  = apply_calibration(cal_noctx, oof_no)
+ 77: 
+ 78: pv = np.zeros(len(sample))
+ 79: pv[mask_ctx] = oof_ctx_cal
+ 80: pv[mask_no]  = oof_no_cal
+ 81: 
+ 82: pt = np.zeros(len(test))
+ 83: pt_ctx_raw = lgbm_predict(Xt.loc[~test["no_ctx"].values], lgb_ctx)
+ 84: pt_no_raw  = lgbm_predict(Xt.loc[test["no_ctx"].values], lgb_noctx)
+ 85: pt[~test["no_ctx"].values] = apply_calibration(cal_ctx,   pt_ctx_raw)
+ 86: pt[test["no_ctx"].values]  = apply_calibration(cal_noctx, pt_no_raw)
+ 87: 
+ 88: tc = tune_threshold(oof_ctx_cal, yv[mask_ctx])
+ 89: tn = tune_threshold(oof_no_cal,  yv[mask_no])
+ 90: 
+ 91: tv = np.where(sample["no_ctx"].values, tn, tc)
+ 92: tt = np.where(test["no_ctx"].values, tn, tc)
+ 93: 
+ 94: print("LGBM has_ctx thr", round(tc, 3), "OOF pointF1", round(fc, 4))
+ 95: print("LGBM no_ctx  thr", round(tn, 3), "OOF pointF1", round(fn, 4))
+ 96: print(
+ 97:     "OVERALL OOF F1(c0):",
+ 98:     round(f1_score(yv, (pv >= tv).astype(int), pos_label=0), 4),
+ 99:     "| all-0 floor:",
+100:     round(f1_score(yv, np.zeros(len(yv)), pos_label=0), 4),
+101: )
+102: 
+103: imp_ctx = pd.Series(lgb_ctx.feature_importance(), index=FEAT_COLS).sort_values(ascending=False)
+104: imp_no = pd.Series(lgb_noctx.feature_importance(), index=FEAT_COLS).sort_values(ascending=False)
+105: print("top features has_ctx:", {k: int(v) for k, v in imp_ctx.head(5).items()})
+106: print("top features no_ctx:", {k: int(v) for k, v in imp_no.head(5).items()})
+107: 
+108: 
+109: 
+110: 
+111: 
+
+========================================
+CELL 17
+========================================
+  1: # ===== CELL 15.5 — PSEUDO LABEL RETRAIN =====
+  2: if cfg.pseudo_label_n > 0:
+  3:     conf_mask = (pt < (tt - 0.25)) | (pt > (tt + 0.25))
+  4:     pseudo_df = test[conf_mask].copy()
+  5:     pseudo_df["label"] = (pt[conf_mask] >= tt[conf_mask]).astype(int)
+  6:     pseudo_df["_conf_score"] = abs(pt[conf_mask] - tt[conf_mask])
+  7:     pseudo_df = pseudo_df.nlargest(min(cfg.pseudo_label_n, len(pseudo_df)), "_conf_score")
+  8:     pseudo_df["premise"]  = pseudo_df["premise"]
+  9:     pseudo_df["response"] = pseudo_df["response_bn"].astype(str)
+ 10:     pseudo_df["src"]      = "test_set"
+ 11:     pseudo_df["mode"]     = "pseudo"
+ 12:     pseudo_df[["premise","response","label","src","mode"]].to_csv(
+ 13:         "/kaggle/working/pseudo_labels.csv", index=False)
+ 14:     print(f"Saved {len(pseudo_df)} pseudo labels")
+ 15: 
+ 16: 
+ 17: 
+
+========================================
+CELL 18
+========================================
+  1: # ===== CELL 16 — SUBMISSION =====
+  2: # pt/tt from Cell 15 (LightGBM meta-model); refined in Cell 15.5 if pseudo-retrain ran
+  3: out=pd.DataFrame({"id":test["id"].values,"label":(pt>=tt).astype(int)})
+  4: # exact duplicates of labeled sample rows get their known label (leakage audit, Cell 4)
+  5: if "leak_label" in test.columns:
+  6:     _lm = test["leak_label"].notna().values
+  7:     if _lm.any():
+  8:         out.loc[_lm, "label"] = test.loc[_lm, "leak_label"].astype(int).values
+  9:         print(f"leak override: {int(_lm.sum())} exact-match rows set to known labels")
+ 10: assert list(out.columns)==["id","label"] and len(out)
+ 11: assert out["label"].isin([0,1]).all() and (out["id"].values==test["id"].values).all()
+ 12: out.to_csv("submission.csv",index=False)
+ 13: print("submission.csv",out.shape,"| halluc rate:",round((out.label==0).mean(),3)); tleft()
+ 14: # ERROR ANALYSIS
+ 15: wrong = sample.copy()
+ 16: wrong["pred"] = (pv >= tv).astype(int)
+ 17: wrong["prob"] = pv
+ 18: wrong = wrong[wrong["pred"] != wrong["label"]]
+ 19: wrong = wrong.sort_values("prob", ascending=False)
+ 20: wrong[["prompt_bn","response_bn","label","pred","prob","no_ctx"]].to_csv("/kaggle/working/errors.csv", index=False)
+ 21: print(f"Wrong predictions: {len(wrong)}/{len(sample)}")
+ 22: print(f"False positives (pred=1, true=0): {((wrong.pred==1)&(wrong.label==0)).sum()}")
+ 23: print(f"False negatives (pred=0, true=1): {((wrong.pred==0)&(wrong.label==1)).sum()}")
+ 24: 
+ 25: # ── Hard Post-Processing Rules ────────
+ 26: import re
+ 27: final_preds = (pt >= tt).astype(int)
+ 28: for i, r in enumerate(test.itertuples()):
+ 29:     resp = str(getattr(r, "response_bn", ""))
+ 30:     prompt = str(getattr(r, "prompt_bn", ""))
+ 31:     
+ 32:     # Rule 1: Empty response is always hallucinated
+ 33:     if not resp or resp.strip() == "" or resp.lower() in ["nan", "null"]:
+ 34:         final_preds[i] = 0
+ 35:         
+ 36:     # Rule 2: If prompt asks for a number, and response has no numbers -> hallucinated
+ 37:     math_terms = ["কত", "কয়টি", "কয়টি", "কবে", "সাল", "তারিখ"]
+ 38:     if any(m in prompt for m in math_terms):
+ 39:         if not re.search(r'\d+|[০-৯]+', resp):
+ 40:             final_preds[i] = 0
+ 41: 
+ 42: sub = pd.DataFrame({"id": test["id"], "label": final_preds})
+ 43: sub.to_csv("submission.csv", index=False)
+ 44: print("Saved final submission.csv with Hard Rules applied!")
+ 45: 
+ 46: 
+ 47: 
+ 48: 
+
+========================================
+CELL 19
+========================================
+  1: # ===== CELL 17 — DIAGNOSTICS =====
+  2: for reg,mask in (("has_ctx",~sample["no_ctx"].values),("no_ctx",sample["no_ctx"].values)):
+  3:     pr=(pv[mask]>=tv[mask]).astype(int)
+  4:     print(f"{reg}: n={mask.sum()} valF1(c0)={f1_score(yv[mask],pr,pos_label=0):.4f} "
+  5:           f"pred-halluc={np.mean(pr==0):.2f} true-halluc={np.mean(yv[mask]==0):.2f}")
+  6: diag=pd.DataFrame({"regime":np.where(sample.no_ctx,"no","has"),"label":yv,"p":pv})
+  7: for c in [c for c in Xv.columns if c!="no_ctx"]: diag[c]=Xv[c].values
+  8: diag.to_csv("/kaggle/working/val_signals.csv",index=False)
+  9: diag_test=pd.DataFrame({"regime":np.where(test.no_ctx,"no","has"),"p":pt})
+ 10: for c in [c for c in Xt.columns if c!="no_ctx"]: diag_test[c]=Xt[c].values
+ 11: diag_test.to_csv("/kaggle/working/test_signals.csv",index=False)
+ 12: print("saved test_signals.csv")
+ 13: print("saved val_signals.csv")
+ 14: 
+ 15: 
+ 16: 
+
+========================================
+CELL 20
+========================================
+  1: # ===== CELL 18 — INTERACTIVE ERROR ANALYSIS & VISUALIZATIONS =====
+  2: import plotly.express as px
+  3: import plotly.graph_objects as go
+  4: import pandas as pd
+  5: from IPython.display import display
+  6: 
+  7: print("Generating Interactive Visualizations...")
+  8: 
+  9: try:
+ 10:     # 1. Probability Distribution by Label (Requires 'wrong' DataFrame from Cell 17)
+ 11:     if 'wrong' in globals():
+ 12:         fig_prob = px.histogram(wrong, x="prob", color="label", nbins=40,
+ 13:                                 title="Probability Distribution of Errors",
+ 14:                                 labels={"prob": "Predicted Probability", "label": "True Label"},
+ 15:                                 color_discrete_sequence=["#EF553B", "#00CC96"])
+ 16:         fig_prob.update_layout(bargap=0.1)
+ 17:         fig_prob.show()
+ 18: 
+ 19:     # 2. LightGBM Feature Importance
+ 20:     if 'imp_ctx' in globals() and 'imp_no' in globals():
+ 21:         weights_df = pd.DataFrame({
+ 22:             'Feature': imp_ctx.index.tolist(),
+ 23:             'Has Context': imp_ctx.values,
+ 24:             'No Context': imp_no.reindex(imp_ctx.index).fillna(0).values,
+ 25:         })
+ 26:         fig_weights = px.bar(weights_df, x='Feature', y=['Has Context', 'No Context'], barmode='group',
+ 27:                              title="LightGBM Meta-Model Feature Importance",
+ 28:                              color_discrete_sequence=["#636EFA", "#FFA15A"])
+ 29:         fig_weights.show()
+ 30: 
+ 31:     # 3. Source Breakdown of Sample (Val Set)
+ 32:     if 'sample' in globals() and 'src' in sample.columns:
+ 33:         fig_src = px.pie(sample, names='src', title="Validation Set Distribution by Source", hole=0.4)
+ 34:         fig_src.show()
+ 35:         
+ 36:     # 4. Hallucination vs Faithful Distribution
+ 37:     if 'sample' in globals() and 'label' in sample.columns:
+ 38:         lbl_map = {0: "Hallucinated (0)", 1: "Faithful (1)"}
+ 39:         dist_df = sample['label'].map(lbl_map).value_counts().reset_index()
+ 40:         dist_df.columns = ['Label', 'Count']
+ 41:         fig_dist = px.bar(dist_df, x='Label', y='Count', title="Overall Validation Label Distribution", color='Label')
+ 42:         fig_dist.show()
+ 43: except Exception as e:
+ 44:     print(f"Visualization error: {e}")
+ 45: 
+ 46: 
+ 47: 
+ 48: 
